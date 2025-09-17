@@ -160,34 +160,132 @@ def grad_reinforce_mean_baseline(theta: float, n_samples: int = 50_000, rng: Opt
     return (path_terms + score_terms).mean()
 
 def sample_gumbel(shape: Union[int, Tuple[int, ...]], rng: RandomGenerator) -> np.ndarray:
+    """
+    Sample from the standard Gumbel distribution Gumbel(0,1).
+
+    Mathematical Background:
+    =======================
+    The Gumbel distribution is used in the Gumbel-Max trick for sampling
+    from discrete distributions. If X ~ Gumbel(0,1), then:
+
+    PDF: f(x) = exp(-x - exp(-x))
+    CDF: F(x) = exp(-exp(-x))
+
+    Inverse CDF sampling:
+    If U ~ Uniform(0,1), then X = -log(-log(U)) ~ Gumbel(0,1)
+
+    Key Property (Gumbel-Max Trick):
+    If g₁, g₂ ~ Gumbel(0,1) and we have logits l₁, l₂, then:
+    argmax_i(l_i + g_i) is distributed according to Categorical(softmax(l))
+
+    For Bernoulli case with p = σ(θ):
+    - l₁ = log p = log σ(θ), l₂ = log(1-p) = log(1-σ(θ))
+    - Sample k = I[l₁ + g₁ > l₂ + g₂] gives k ~ Bernoulli(p)
+
+    Args:
+        shape: Shape of samples to generate
+        rng: Random number generator
+
+    Returns:
+        Samples from Gumbel(0,1) distribution
+    """
     u = rng.random(shape)
     return -np.log(-np.log(u))
 
 def grad_gs_ste(theta: float, n_samples: int = 50_000, tau: float = 0.5, rng: Optional[RandomGenerator] = None) -> float:
     """
-    Gumbel-Softmax Straight-Through estimator for Bernoulli.
-    Forward: hard sample z ∈ {0,1}; Backward: surrogate gradient via relaxed s.
+    Gumbel-Softmax Straight-Through Estimator (GS-STE) for Bernoulli variables.
+
+    Mathematical Formulation:
+    ========================
+
+    The goal is to estimate ∇_θ E[f(θ, k)] where k ~ Bernoulli(p(θ)) and p(θ) = σ(θ).
+
+    1) FORWARD PASS (Hard Sampling):
+       - Sample Gumbel noise: g₁, g₀ ~ Gumbel(0,1)
+       - Hard decision: z = I[log p(θ) + g₁ > log(1-p(θ)) + g₀]
+       - Function value: f(θ, z) where z ∈ {0,1} (discrete)
+
+    2) BACKWARD PASS (Soft Gradient):
+       - Soft relaxation: s = σ((logit(p(θ)) + (g₁ - g₀))/τ)
+       - Gradient of soft variable: ∂s/∂θ = (s(1-s)/τ) · ∂logit(p(θ))/∂θ
+       - Since p(θ) = σ(θ), we have ∂logit(p(θ))/∂θ = 1
+
+    3) STRAIGHT-THROUGH TRICK:
+       - Forward: use z (hard, discrete)
+       - Backward: use ∂s/∂θ (soft, continuous)
+       - This gives biased but low-variance gradients
+
+    The estimator combines:
+    - Pathwise gradient: ∂f(θ,z)/∂θ (direct differentiation w.r.t. θ)
+    - Straight-through term: (f₁ - f₀) · ∂s/∂θ (replacement gradient)
+
+    where f₁ = sin(θ), f₀ = cos(θ) are the branch values.
+
+    Args:
+        theta: Parameter value
+        n_samples: Number of Monte Carlo samples
+        tau: Temperature parameter (τ > 0). Lower τ → lower bias, higher variance
+        rng: Random number generator
+
+    Returns:
+        Gradient estimate using GS-STE
     """
     if rng is None:
         rng = np.random.default_rng()
-    p = sigmoid(theta)
-    log_p = np.log(p)
-    log_q = np.log(1.0 - p)
-    g1 = sample_gumbel(n_samples, rng)
-    g0 = sample_gumbel(n_samples, rng)
 
-    # Hard decision in forward
-    z = (log_p + g1 > log_q + g0).astype(np.float64)
+    # Step 1: Setup probability and logits
+    p = sigmoid(theta)  # p(θ) = σ(θ) ∈ (0,1)
+    log_p = np.log(p)   # log p(θ)
+    log_q = np.log(1.0 - p)  # log(1 - p(θ))
 
-    # Soft relaxation for backward
-    diff_g = np.subtract(g1, g0)  # type: ignore
-    s = 1.0 / (1.0 + np.exp(-((logit(p) + diff_g) / tau)))
-    ds_dtheta = (s * (1.0 - s)) / tau  # because d/dθ logit(p) = 1 for p=σ(θ)
+    # Step 2: Sample Gumbel noise
+    # g₁, g₀ ~ Gumbel(0,1) are i.i.d. Gumbel random variables
+    g1 = sample_gumbel(n_samples, rng)  # Shape: (n_samples,)
+    g0 = sample_gumbel(n_samples, rng)  # Shape: (n_samples,)
 
-    # f = z*sinθ + (1 - z)*cosθ
+    # Step 3: FORWARD PASS - Hard discrete sampling
+    # Decision rule: choose k=1 if log p + g₁ > log(1-p) + g₀
+    # Equivalently: choose k=1 if logit(p) + (g₁ - g₀) > 0
+    # This gives hard samples z ∈ {0,1}
+    z = (log_p + g1 > log_q + g0).astype(np.float64)  # Hard samples: z ∈ {0,1}
+
+    # Step 4: BACKWARD PASS - Soft continuous relaxation
+    # For gradients, we use a soft version with temperature τ:
+    # s = σ((logit(p(θ)) + (g₁ - g₀))/τ)
+    diff_g = np.subtract(g1, g0)  # type: ignore  # g₁ - g₀
+    logit_p = logit(p)  # logit(p(θ)) = log(p/(1-p))
+
+    # Soft relaxation: s ∈ (0,1) is continuous and differentiable
+    s = 1.0 / (1.0 + np.exp(-((logit_p + diff_g) / tau)))
+
+    # Gradient of soft variable w.r.t. θ:
+    # ∂s/∂θ = (∂s/∂logit) · (∂logit(p)/∂p) · (∂p/∂θ)
+    # Since s = σ((logit(p) + noise)/τ), we have:
+    # ∂s/∂logit = s(1-s)/τ
+    # ∂logit(p)/∂p = 1/[p(1-p)]
+    # ∂p/∂θ = p(1-p) [derivative of sigmoid]
+    # Combined: ∂s/∂θ = (s(1-s)/τ) · (1/[p(1-p)]) · p(1-p) = s(1-s)/τ
+    ds_dtheta = (s * (1.0 - s)) / tau  # Gradient of soft variable
+
+    # Step 5: Function evaluation and pathwise gradients
+    # Pathwise gradient: direct differentiation of f(θ,z) w.r.t. θ
+    # f(θ,z) = z·sin(θ) + (1-z)·cos(θ)
+    # ∂f/∂θ = z·cos(θ) - (1-z)·sin(θ)
     path_term = z * math.cos(theta) - (1.0 - z) * math.sin(theta)
-    ste_term = (math.sin(theta) - math.cos(theta)) * ds_dtheta
-    return float((path_term + ste_term).mean())
+
+    # Step 6: Straight-Through Estimator term
+    # We replace ∂z/∂θ (which is zero almost everywhere) with ∂s/∂θ
+    # STE gradient: (f₁ - f₀) · ∂s/∂θ where f₁ = sin(θ), f₀ = cos(θ)
+    # This captures how the discrete choice affects the function value
+    f1_minus_f0 = math.sin(theta) - math.cos(theta)  # sin(θ) - cos(θ)
+    ste_term = f1_minus_f0 * ds_dtheta
+
+    # Step 7: Combine pathwise and straight-through terms
+    # Total gradient estimate: E[∂f/∂θ|z] + E[(f₁-f₀) · ∂s/∂θ]
+    total_gradient = path_term + ste_term
+
+    return float(total_gradient.mean())
 
 # -----------------------------
 # Grid evaluation & gradient demo plotting
