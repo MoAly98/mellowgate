@@ -3,16 +3,14 @@
 """
 Stochastic Threshold Cuts with Expectation Values and Gumbel-Max Trick
 
-This script demonstrates the proper application of differentiable discrete decisions
-to threshold cuts, using the same principles as the sine/cosine example:
-• Expectation values for differentiable loss functions
-• Gumbel-Max trick for unbiased sampling
-• Proper gradient estimation techniques (REINFORCE, Gumbel-Softmax STE)
+Demonstrates differentiable discrete decisions for threshold-based event selection.
+Includes implementations of:
+- Hard and soft threshold cuts
+- Gumbel-Max trick for unbiased sampling
+- Gradient estimation methods (REINFORCE, Gumbel-Softmax STE)
+- Efficiency analysis and visualization
 
-The key insight: replace hard threshold cuts with stochastic selections,
-then optimize using expectation values to make everything differentiable.
-
-Author: Enhanced for differentiable discrete decisions tutorial
+Author: Physics Analysis Tools
 """
 
 from __future__ import annotations
@@ -20,8 +18,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 import os
+import logging
 from typing import Optional, Tuple, Dict, List, Union, Any
-from dataclasses import dataclass
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Suppress warnings
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -122,7 +126,7 @@ def f_cut_discrete(data_point: float, threshold: float, k: int) -> float:
 
 def f_cut_relaxed(data: np.ndarray, threshold: float, sharpness: float = 1.0) -> float:
     """
-    Relaxed expectation version - analogous to E[f] in sine/cosine example.
+    Relaxed expectation version - analogous to E[f] for differentiable optimization.
 
     This is the stochastic relaxation of the Heaviside function:
     E[H(x - threshold)] = p(x) * 1 + (1-p(x)) * 0 = p(x) = σ(β(x - threshold))
@@ -302,11 +306,11 @@ def compute_soft_efficiency(soft_probs: np.ndarray, true_labels: np.ndarray) -> 
     purity = signal_contribution / n_selected_expected if n_selected_expected > 0 else 0
 
     return {
-        'signal_efficiency': signal_eff,
-        'background_efficiency': background_eff,
-        'background_rejection': background_rej,
-        'purity': purity,
-        'n_selected': n_selected_expected
+        'signal_efficiency': float(signal_eff),
+        'background_efficiency': float(background_eff),
+        'background_rejection': float(background_rej),
+        'purity': float(purity),
+        'n_selected': float(n_selected_expected)
     }
 
 # -----------------------------
@@ -319,15 +323,14 @@ def grad_finite_difference_cuts(threshold: float, data: np.ndarray, sharpness: f
     """
     Finite-difference gradient estimator for threshold cuts.
 
-    Analogous to grad_finite_difference in sine/cosine example.
+    Estimates gradients by evaluating the function at slightly different parameter values.
     """
     if rng is None:
         rng = np.random.default_rng()
-    assert rng is not None  # Type checker hint
 
     # Sample subset for efficiency
     if len(data) > n_samples:
-        indices = rng.choice(len(data), n_samples, replace=False)
+        indices = rng.choice(len(data), n_samples, replace=False)  # type: ignore
         data_sample = data[indices]
     else:
         data_sample = data
@@ -341,7 +344,7 @@ def grad_finite_difference_cuts(threshold: float, data: np.ndarray, sharpness: f
     f1 = np.mean([f_cut_discrete(x, threshold + delta, int(k))
                   for x, k in zip(data_sample, k1)])
 
-    return (f1 - f0) / delta
+    return float((f1 - f0) / delta)
 
 def grad_reinforce_cuts(threshold: float, data: np.ndarray, sharpness: float = 1.0,
                        n_samples: int = 5000, baseline: Optional[float] = None,
@@ -349,16 +352,15 @@ def grad_reinforce_cuts(threshold: float, data: np.ndarray, sharpness: float = 1
     """
     REINFORCE gradient estimator for threshold cuts.
 
-    Analogous to grad_reinforce in sine/cosine example.
-    Uses the score function to estimate gradients.
+    Uses the score function (policy gradient) method to estimate gradients
+    for discrete stochastic functions.
     """
     if rng is None:
         rng = np.random.default_rng()
-    assert rng is not None
 
     # Sample subset
     if len(data) > n_samples:
-        indices = rng.choice(len(data), n_samples, replace=False)
+        indices = rng.choice(len(data), n_samples, replace=False)  # type: ignore
         data_sample = data[indices]
     else:
         data_sample = data
@@ -388,15 +390,15 @@ def grad_reinforce_mean_baseline_cuts(threshold: float, data: np.ndarray, sharpn
     """
     REINFORCE with mean baseline for threshold cuts.
 
-    Analogous to grad_reinforce_mean_baseline in sine/cosine example.
+    Uses the mean function value as a baseline to reduce variance
+    in the REINFORCE gradient estimator.
     """
     if rng is None:
         rng = np.random.default_rng()
-    assert rng is not None
 
     # Sample subset
     if len(data) > n_samples:
-        indices = rng.choice(len(data), n_samples, replace=False)
+        indices = rng.choice(len(data), n_samples, replace=False)  # type: ignore
         data_sample = data[indices]
     else:
         data_sample = data
@@ -428,16 +430,15 @@ def grad_gumbel_softmax_ste_cuts(threshold: float, data: np.ndarray, sharpness: 
     """
     Gumbel-Softmax Straight-Through Estimator for threshold cuts.
 
-    Analogous to grad_gs_ste in sine/cosine example.
-    Forward pass: hard decisions; Backward pass: soft gradients.
+    Forward pass uses hard decisions, backward pass uses soft gradients
+    for better gradient flow in optimization.
     """
     if rng is None:
         rng = np.random.default_rng()
-    assert rng is not None
 
     # Sample subset
     if len(data) > n_samples:
-        indices = rng.choice(len(data), n_samples, replace=False)
+        indices = rng.choice(len(data), n_samples, replace=False)  # type: ignore
         data_sample = data[indices]
     else:
         data_sample = data
@@ -498,7 +499,8 @@ def compare_cut_methods():
 
     # Soft probabilities for efficiency analysis
     soft_probs = sigmoid(sharpness * (data - threshold))
-    assert isinstance(soft_probs, np.ndarray)  # Type hint for checker
+    # Type assertion for numpy array
+    assert isinstance(soft_probs, np.ndarray)
 
     # Method 3: Stochastic sampling (unbiased but high variance)
     rng = np.random.default_rng(42)
@@ -614,7 +616,7 @@ def compare_cut_methods():
     plt.savefig(os.path.join(plots_dir, '03_stochastic_cut_result.png'), dpi=300, bbox_inches='tight')
     plt.close()
 
-    # Plot 3b: Multiple stochastic cut samples (from original stochastic_threshold_cuts.py style)
+    # Plot 3b: Multiple stochastic cut samples (showing sampling variability)
     plt.figure(figsize=(10, 6))
     colors = ['green', 'orange', 'purple']
     n_stochastic_samples = 3
@@ -670,7 +672,7 @@ def compare_cut_methods():
     plt.figure(figsize=(10, 6))
     plt.hist(stoch_rewards, bins=20, alpha=0.7, density=True, label='Stochastic Samples')
     plt.axvline(expectation_reward, color='red', linestyle='-', linewidth=2, label='Expectation')
-    plt.axvline(hard_reward, color='green', linestyle='--', linewidth=2, label='Hard Cut')
+    plt.axvline(float(hard_reward), color='green', linestyle='--', linewidth=2, label='Hard Cut')
     plt.xlabel('Reward Value')
     plt.ylabel('Density')
     plt.title('Reward Distribution')
@@ -723,7 +725,7 @@ def compare_cut_methods():
     # Plot 8: Efficiency variance over trials
     plt.figure(figsize=(10, 6))
     plt.plot(stoch_efficiencies, 'b-', alpha=0.7, linewidth=1)
-    plt.axhline(np.mean(stoch_efficiencies), color='blue', linestyle='-', linewidth=2, label='Mean')
+    plt.axhline(float(np.mean(stoch_efficiencies)), color='blue', linestyle='-', linewidth=2, label='Mean')
     plt.axhline(soft_metrics['signal_efficiency'], color='red', linestyle='--', linewidth=2, label='Expected')
     plt.xlabel('Trial Number')
     plt.ylabel('Signal Efficiency')
@@ -736,6 +738,7 @@ def compare_cut_methods():
 
     # Plot 9: Selection probability vs data value
     plt.figure(figsize=(10, 6))
+    # Calculate indices for data sorting
     sorted_indices = np.argsort(data)  # type: ignore
     sorted_data = data[sorted_indices]
     sorted_probs = soft_probs[sorted_indices]
@@ -852,9 +855,6 @@ def compare_gradient_methods(plots_dir: str = "plots"):
     """Compare different gradient estimation methods for threshold cuts."""
     print("\n🎯 Comparing Gradient Estimation Methods")
     print("=" * 55)
-
-    # Import os if not already imported
-    import os
 
     # Generate data
     data, _ = generate_physics_like_data(n_samples=1500, signal_fraction=0.3)
@@ -1038,7 +1038,7 @@ def main():
     print("🚀 Stochastic Threshold Cuts with Expectation Values")
     print("=" * 70)
     print("This script demonstrates proper application of differentiable discrete")
-    print("decisions to threshold cuts, using the same principles as the sine/cosine example:")
+    print("decisions to threshold cuts. Key concepts demonstrated:")
     print("• Expectation values make discrete decisions differentiable")
     print("• Gumbel-Max trick enables unbiased sampling")
     print("• Multiple gradient estimation techniques (REINFORCE, Gumbel-Softmax STE)")
@@ -1047,7 +1047,7 @@ def main():
     # Run demonstrations
     demonstrate_gumbel_max_trick()
     data, labels, threshold = compare_cut_methods()
-    compare_gradient_methods("plots")  # Pass the plots directory
+    compare_gradient_methods("plots")
 
 if __name__ == "__main__":
     main()
