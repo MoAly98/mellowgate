@@ -36,33 +36,6 @@ class FiniteDifferenceConfig:
     num_samples: int = 2000
 
 
-# Constructor functions for backward compatibility
-
-
-def _patch_finite_difference_config_init() -> None:
-    """Patch FiniteDifferenceConfig.__init__ to accept old parameter names."""
-    original_init = FiniteDifferenceConfig.__init__
-
-    def new_init(
-        self,
-        step_size=1e-3,
-        num_samples=2000,
-        h=None,
-        n=None,
-    ):
-        # Support both old and new parameter names
-        step_sz = step_size if h is None else h
-        num_samp = num_samples if n is None else n
-
-        original_init(self, step_sz, num_samp)
-
-    FiniteDifferenceConfig.__init__ = new_init
-
-
-# Apply the patch
-_patch_finite_difference_config_init()
-
-
 def finite_difference_gradient(
     discrete_problem: DiscreteProblem,
     parameter_value: float,

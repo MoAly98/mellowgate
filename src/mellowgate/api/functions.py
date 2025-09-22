@@ -38,17 +38,6 @@ class Branch:
     function: Callable[[float], float]
     derivative_function: Optional[Callable[[float], float]] = None
 
-    # Backward compatibility aliases
-    @property
-    def f(self) -> Callable[[float], float]:
-        """Backward compatibility alias for function."""
-        return self.function
-
-    @property
-    def df(self) -> Optional[Callable[[float], float]]:
-        """Backward compatibility alias for derivative_function."""
-        return self.derivative_function
-
 
 @dataclass
 class LogitsModel:
@@ -77,17 +66,6 @@ class LogitsModel:
 
     logits_function: Callable[[float], np.ndarray]  # returns shape (K,)
     logits_derivative_function: Optional[Callable[[float], np.ndarray]] = None
-
-    # Backward compatibility aliases
-    @property
-    def logits(self) -> Callable[[float], np.ndarray]:
-        """Backward compatibility alias for logits_function."""
-        return self.logits_function
-
-    @property
-    def dlogits_dtheta(self) -> Optional[Callable[[float], np.ndarray]]:
-        """Backward compatibility alias for logits_derivative_function."""
-        return self.logits_derivative_function
 
 
 @dataclass
@@ -243,98 +221,3 @@ class DiscreteProblem:
         probability_term = np.sum(function_values * probability_gradients)
 
         return float(function_term + probability_term)
-
-
-# Constructor functions for backward compatibility
-
-
-def create_branch(
-    function: Optional[Callable[[float], float]] = None,
-    derivative_function: Optional[Callable[[float], float]] = None,
-    f: Optional[Callable[[float], float]] = None,
-    df: Optional[Callable[[float], float]] = None,
-) -> Branch:
-    """Create a Branch with backward compatibility for parameter names."""
-    # Support both old and new parameter names
-    func = function if function is not None else f
-    deriv_func = derivative_function if derivative_function is not None else df
-
-    if func is None:
-        raise ValueError("Must provide either 'function' or 'f' parameter")
-
-    return Branch(function=func, derivative_function=deriv_func)
-
-
-def create_logits_model(
-    logits_function: Optional[Callable[[float], np.ndarray]] = None,
-    logits_derivative_function: Optional[Callable[[float], np.ndarray]] = None,
-    logits: Optional[Callable[[float], np.ndarray]] = None,
-    dlogits_dtheta: Optional[Callable[[float], np.ndarray]] = None,
-) -> LogitsModel:
-    """Create a LogitsModel with backward compatibility for parameter names."""
-    # Support both old and new parameter names
-    logits_func = logits_function if logits_function is not None else logits
-    logits_deriv_func = (
-        logits_derivative_function
-        if logits_derivative_function is not None
-        else dlogits_dtheta
-    )
-
-    if logits_func is None:
-        raise ValueError("Must provide either 'logits_function' or 'logits' parameter")
-
-    return LogitsModel(
-        logits_function=logits_func, logits_derivative_function=logits_deriv_func
-    )
-
-
-# Patch the original classes to accept old-style parameters
-def _patch_branch_init() -> None:
-    """Patch Branch.__init__ to accept old parameter names."""
-    original_init = Branch.__init__
-
-    def new_init(self, function=None, derivative_function=None, f=None, df=None):
-        # Support both old and new parameter names
-        func = function if function is not None else f
-        deriv_func = derivative_function if derivative_function is not None else df
-
-        if func is None:
-            raise ValueError("Must provide either 'function' or 'f' parameter")
-
-        original_init(self, func, deriv_func)
-
-    Branch.__init__ = new_init
-
-
-def _patch_logits_model_init() -> None:
-    """Patch LogitsModel.__init__ to accept old parameter names."""
-    original_init = LogitsModel.__init__
-
-    def new_init(
-        self,
-        logits_function=None,
-        logits_derivative_function=None,
-        logits=None,
-        dlogits_dtheta=None,
-    ):
-        # Support both old and new parameter names
-        logits_func = logits_function if logits_function is not None else logits
-        logits_deriv_func = (
-            logits_derivative_function
-            if logits_derivative_function is not None
-            else dlogits_dtheta
-        )
-
-        if logits_func is None:
-            raise ValueError(
-                "Must provide either 'logits_function' or 'logits' parameter"
-            )
-
-        original_init(self, logits_func, logits_deriv_func)
-
-    LogitsModel.__init__ = new_init
-
-
-# Apply the patches
-_patch_branch_init()
-_patch_logits_model_init()

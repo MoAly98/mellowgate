@@ -57,56 +57,6 @@ class Sweep:
     num_repetitions: int = 200
     estimator_configs: Optional[Dict[str, Dict[str, Any]]] = None
 
-    # Backward compatibility aliases
-    @property
-    def thetas(self) -> ArrayType:
-        """Backward compatibility alias for theta_values."""
-        return self.theta_values
-
-    @property
-    def repeats(self) -> int:
-        """Backward compatibility alias for num_repetitions."""
-        return self.num_repetitions
-
-    @property
-    def estimators(self) -> Optional[Dict[str, Dict[str, Any]]]:
-        """Backward compatibility alias for estimator_configs."""
-        return self.estimator_configs
-
-    # Constructor functions for backward compatibility
-
-
-def _patch_sweep_init() -> None:
-    """Patch Sweep.__init__ to accept old parameter names."""
-    original_init = Sweep.__init__
-
-    def new_init(
-        self,
-        theta_values=None,
-        num_repetitions=200,
-        estimator_configs=None,
-        thetas=None,
-        repeats=None,
-        estimators=None,
-    ):
-        # Support both old and new parameter names
-        theta_vals = theta_values if theta_values is not None else thetas
-        num_reps = num_repetitions if repeats is None else repeats
-        estimator_cfgs = (
-            estimator_configs if estimator_configs is not None else estimators
-        )
-
-        if theta_vals is None:
-            raise ValueError("Must provide either 'theta_values' or 'thetas' parameter")
-
-        original_init(self, theta_vals, num_reps, estimator_cfgs)
-
-    Sweep.__init__ = new_init
-
-
-# Apply the patch
-_patch_sweep_init()
-
 
 def run_parameter_sweep(
     discrete_problem: DiscreteProblem, sweep_config: Sweep
