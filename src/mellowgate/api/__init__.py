@@ -1,4 +1,13 @@
-# mellowgate.api __init__.py
+"""API module for mellowgate discrete optimization functions."""
+
 from .functions import DiscreteProblem, Branch, LogitsModel
-from .estimators import fd_gradient, FDConfig, reinforce_gradient, ReinforceConfig, ReinforceState, gs_gradient, GSConfig
-from .experiments import run_sweep, Sweep
+from .estimators import (
+    finite_difference_gradient,
+    FiniteDifferenceConfig,
+    reinforce_gradient,
+    ReinforceConfig,
+    ReinforceState,
+    gumbel_softmax_gradient,
+    GumbelSoftmaxConfig,
+)
+from .experiments import run_parameter_sweep, Sweep
