@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  lint:
+    name: Code Quality (Linting)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black==25.9.0 flake8==7.3.0 isort==6.0.1
+        # Install project in editable mode
+        pip install -e .
+
+    - name: Check code formatting with Black
+      run: |
+        echo "Checking Python code formatting with Black..."
+        black --check --diff src/ example.py
+        if [ $? -ne 0 ]; then
+          echo "❌ Code formatting issues found. Run 'black src/ example.py' to fix."
+          exit 1
+        else
+          echo "✅ Code formatting is correct."
+        fi
+
+    - name: Check import sorting with isort
+      run: |
+        echo "Checking import sorting with isort..."
+        isort --check-only --diff src/ example.py
+        if [ $? -ne 0 ]; then
+          echo "❌ Import sorting issues found. Run 'isort src/ example.py' to fix."
+          exit 1
+        else
+          echo "✅ Import sorting is correct."
+        fi
+
+    - name: Lint with flake8
+      run: |
+        echo "Linting Python code with flake8..."
+        flake8 src/ example.py
+        if [ $? -ne 0 ]; then
+          echo "❌ Linting issues found. Check the output above for details."
+          exit 1
+        else
+          echo "✅ No linting issues found."
+        fi
+
+  # Type checking job (disabled by default)
+  # Uncomment when ready for type checking
+  # type-check:
+  #   name: Type Checking
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v4
+  #
+  #   - name: Set up Python
+  #     uses: actions/setup-python@v4
+  #     with:
+  #       python-version: "3.11"
+  #
+  #   - name: Install dependencies
+  #     run: |
+  #       python -m pip install --upgrade pip
+  #       pip install mypy types-requests
+  #       pip install -e .
+  #
+  #   - name: Type check with MyPy
+  #     run: |
+  #       echo "Type checking with MyPy..."
+  #       mypy src/mellowgate/
+  #       if [ $? -ne 0 ]; then
+  #         echo "❌ Type checking issues found."
+  #         exit 1
+  #       else
+  #         echo "✅ Type checking passed."
+  #       fi
+
+  # test:
+    # Placeholder for proper unit tests with pytest
+    # Uncomment and modify when you have a proper test suite
+    # - name: Run unit tests with pytest
+    #   run: |
+    #     echo "Running unit tests with pytest..."
+    #     pip install pytest pytest-cov
+    #     pytest tests/ -v --cov=mellowgate --cov-report=term-missing
+    #     if [ $? -ne 0 ]; then
+    #       echo "❌ Unit tests failed."
+    #       exit 1
+    #     else
+    #       echo "✅ Unit tests passed."
+    #     fi

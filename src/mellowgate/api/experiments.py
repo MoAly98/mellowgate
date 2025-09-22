@@ -1,63 +1,182 @@
+"""Experimental framework for running gradient estimation sweeps.
+
+This module provides tools for conducting systematic experiments with different
+gradient estimation methods across parameter ranges, collecting statistics,
+and timing information for performance analysis.
+"""
+
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 import numpy as np
+
+from mellowgate.api.estimators import (
+    ReinforceState,
+    finite_difference_gradient,
+    gumbel_softmax_gradient,
+    reinforce_gradient,
+)
 from mellowgate.api.functions import DiscreteProblem
-from mellowgate.api.estimators import fd_gradient, FDConfig, reinforce_gradient, ReinforceConfig, ReinforceState, gs_gradient, GSConfig
 from mellowgate.logging import logger
-Array = np.ndarray
+
+ArrayType = np.ndarray
+
 
 @dataclass
 class Sweep:
-    thetas: Array                  # 1D array of theta values
-    repeats: int = 200             # repetitions per theta for mean/std
-    estimators: Optional[Dict[str, Dict[str, Any]]] = None
-    # example:
-    # {"fd": {"cfg": FDConfig()},
-    #  "reinforce": {"cfg": ReinforceConfig(), "state": ReinforceState()},
-    #  "gs": {"cfg": GSConfig(tau=0.5)}}
+    """Configuration for a parameter sweep experiment.
 
-def run_sweep(prob: DiscreteProblem, sweep: Sweep) -> Dict[str, Dict[str, Array]]:
-    if sweep.estimators is None:
-        logger.error("Sweep.estimators is None. Nothing to run.")
-        return {}
-    logger.info("Starting sweep over estimators: %s", list(sweep.estimators.keys()))
-    out = {}
-    for name, spec in sweep.estimators.items():
-        logger.info(f"Running estimator: {name}")
-        cfg = spec["cfg"]
-        state = spec.get("state", None)
-        means, stds, times = [], [], []
-        for th in sweep.thetas:
-            logger.info(f"  Theta: {th}")
-            samples = []
-            t0 = time.time()
-            for i in range(sweep.repeats):
-                if i % max(1, sweep.repeats // 5) == 0:
-                    logger.debug(f"    Repeat {i+1}/{sweep.repeats}")
-                if name == "fd":
-                    samples.append(fd_gradient(prob, float(th), cfg))
-                elif name == "reinforce":
-                    if not isinstance(state, ReinforceState):
-                        logger.error("State for 'reinforce' must be a ReinforceState instance.")
-                        raise TypeError("State for 'reinforce' must be a ReinforceState instance.")
-                    samples.append(reinforce_gradient(prob, float(th), cfg, state))
-                elif name == "gs":
-                    samples.append(gs_gradient(prob, float(th), cfg))
-                else:
-                    logger.error(f"Unknown estimator: {name}")
-                    raise ValueError("Unknown estimator: " + name)
-            times.append(time.time() - t0)
-            samples = np.array(samples, dtype=float)
-            means.append(samples.mean())
-            stds.append(samples.std(ddof=1))
-            logger.info(f"    Mean: {means[-1]:.4g}, Std: {stds[-1]:.4g}, Time: {times[-1]:.2f}s")
-        out[name] = {
-            "theta": sweep.thetas.copy(),
-            "mean": np.array(means),
-            "std":  np.array(stds),
-            "time": np.array(times),
+    Defines the experimental setup for testing gradient estimators across
+    a range of parameter values with multiple repetitions for statistical
+    analysis.
+
+    Attributes:
+        theta_values: 1D array of theta parameter values to test.
+        num_repetitions: Number of repetitions per theta value for computing
+                        mean and standard deviation statistics.
+        estimator_configs: Dictionary mapping estimator names to their
+                          configurations. Each entry should contain a 'cfg'
+                          key with the estimator configuration, and optionally
+                          a 'state' key for stateful estimators like REINFORCE.
+
+    Examples:
+        >>> import numpy as np
+        >>> from mellowgate.api.estimators import FiniteDifferenceConfig
+        >>>
+        >>> sweep = Sweep(
+        ...     theta_values=np.linspace(-2, 2, 10),
+        ...     num_repetitions=100,
+        ...     estimator_configs={
+        ...         "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3)}
+        ...     }
+        ... )
+    """
+
+    theta_values: ArrayType
+    num_repetitions: int = 200
+    estimator_configs: Optional[Dict[str, Dict[str, Any]]] = None
+
+
+def run_parameter_sweep(
+    discrete_problem: DiscreteProblem, sweep_config: Sweep
+) -> Dict[str, Dict[str, ArrayType]]:
+    """Execute a parameter sweep experiment with multiple gradient estimators.
+
+    Runs the specified gradient estimators across all theta values in the sweep,
+    collecting timing, mean, and standard deviation statistics for each
+    estimator and parameter value.
+
+    Args:
+        discrete_problem: The discrete optimization problem to analyze.
+        sweep_config: Configuration defining the experimental parameters.
+
+    Returns:
+        Dict containing results for each estimator. Structure:
+        {
+            "estimator_name": {
+                "theta": array of theta values,
+                "mean": array of gradient estimate means,
+                "std": array of gradient estimate standard deviations,
+                "time": array of computation times per theta
+            }
         }
-        logger.info(f"Finished estimator: {name}")
+
+    Raises:
+        ValueError: If an unknown estimator name is specified.
+        TypeError: If REINFORCE estimator is used without proper state object.
+
+    Examples:
+        >>> results = run_parameter_sweep(problem, sweep)
+        >>> fd_means = results["fd"]["mean"]
+        >>> fd_stds = results["fd"]["std"]
+    """
+    if sweep_config.estimator_configs is None:
+        logger.error("Sweep estimator_configs is None. Nothing to run.")
+        return {}
+
+    logger.info(
+        "Starting sweep over estimators: %s",
+        list(sweep_config.estimator_configs.keys()),
+    )
+
+    results = {}
+
+    for estimator_name, estimator_spec in sweep_config.estimator_configs.items():
+        logger.info(f"Running estimator: {estimator_name}")
+
+        estimator_config = estimator_spec["cfg"]
+        estimator_state = estimator_spec.get("state", None)
+
+        means_list, stds_list, times_list = [], [], []
+
+        for theta_value in sweep_config.theta_values:
+            logger.info(f"  Theta: {theta_value}")
+
+            gradient_samples = []
+            start_time = time.time()
+
+            for repetition_index in range(sweep_config.num_repetitions):
+                # Log progress periodically
+                if repetition_index % max(1, sweep_config.num_repetitions // 5) == 0:
+                    logger.debug(
+                        f"    Repetition {repetition_index+1}/"
+                        f"{sweep_config.num_repetitions}"
+                    )
+
+                # Compute gradient estimate based on estimator type
+                if estimator_name == "fd":
+                    gradient_estimate = finite_difference_gradient(
+                        discrete_problem, float(theta_value), estimator_config
+                    )
+                elif estimator_name == "reinforce":
+                    if not isinstance(estimator_state, ReinforceState):
+                        logger.error(
+                            "State for 'reinforce' must be a ReinforceState instance."
+                        )
+                        raise TypeError(
+                            "State for 'reinforce' must be a ReinforceState instance."
+                        )
+                    gradient_estimate = reinforce_gradient(
+                        discrete_problem,
+                        float(theta_value),
+                        estimator_config,
+                        estimator_state,
+                    )
+                elif estimator_name == "gs":
+                    gradient_estimate = gumbel_softmax_gradient(
+                        discrete_problem, float(theta_value), estimator_config
+                    )
+                else:
+                    logger.error(f"Unknown estimator: {estimator_name}")
+                    raise ValueError(f"Unknown estimator: {estimator_name}")
+
+                gradient_samples.append(gradient_estimate)
+
+            # Record timing and compute statistics
+            elapsed_time = time.time() - start_time
+            times_list.append(elapsed_time)
+
+            gradient_samples_array = np.array(gradient_samples, dtype=float)
+            sample_mean = gradient_samples_array.mean()
+            sample_std = gradient_samples_array.std(ddof=1)
+
+            means_list.append(sample_mean)
+            stds_list.append(sample_std)
+
+            logger.info(
+                f"    Mean: {sample_mean:.4g}, Std: {sample_std:.4g}, "
+                f"Time: {elapsed_time:.2f}s"
+            )
+
+        # Store results for this estimator
+        results[estimator_name] = {
+            "theta": sweep_config.theta_values.copy(),
+            "mean": np.array(means_list),
+            "std": np.array(stds_list),
+            "time": np.array(times_list),
+        }
+        logger.info(f"Finished estimator: {estimator_name}")
+
     logger.info("Sweep complete.")
-    return out
+    return results

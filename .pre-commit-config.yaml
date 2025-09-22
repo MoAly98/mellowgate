@@ -1,0 +1,90 @@
+# Pre-commit hooks for code quality and formatting
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+repos:
+  # Black code formatter
+  - repo: https://github.com/psf/black
+    rev: 25.9.0
+    hooks:
+      - id: black
+        name: black
+        description: "Black: The uncompromising Python code formatter"
+        entry: black
+        language: python
+        language_version: python3
+        require_serial: true
+        types_or: [python, pyi]
+        minimum_pre_commit_version: 2.9.2
+        exclude: ^learning/
+
+  # Flake8 linter
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.3.0
+    hooks:
+      - id: flake8
+        name: flake8
+        description: "Flake8: Your tool for style guide enforcement"
+        entry: flake8
+        language: python
+        types: [python]
+        require_serial: true
+        exclude: ^learning/
+
+  # isort import formatter
+  - repo: https://github.com/pycqa/isort
+    rev: 6.0.1
+    hooks:
+      - id: isort
+        name: isort
+        description: "isort: A Python utility to sort imports"
+        entry: isort
+        language: python
+        types: [python]
+        args: [--profile, black]
+        exclude: ^learning/
+
+  # Basic file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        name: trim trailing whitespace
+        description: This hook trims trailing whitespace
+        entry: trailing-whitespace-fixer
+        language: python
+        types: [text]
+      - id: end-of-file-fixer
+        name: fix end of files
+        description: Ensures that a file is either empty or ends with one newline
+        entry: end-of-file-fixer
+        language: python
+        types: [text]
+      - id: check-merge-conflict
+        name: check for merge conflicts
+        description: Check for files that contain merge conflict strings
+        entry: check-merge-conflict
+        language: python
+        types: [text]
+      - id: check-yaml
+        name: check yaml
+        description: This hook checks yaml files for parseable syntax
+        entry: check-yaml
+        language: python
+        types: [yaml]
+
+  # MyPy type checking (disabled by default)
+  # Uncomment and configure when ready for type checking
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.11.2
+  #   hooks:
+  #     - id: mypy
+  #       name: mypy
+  #       description: "MyPy: Static type checker for Python"
+  #       entry: mypy
+  #       language: python
+  #       types: [python]
+  #       require_serial: true
+  #       args: [--ignore-missing-imports, --show-error-codes]
+  #       additional_dependencies: [types-requests]
+  #       exclude: ^learning/

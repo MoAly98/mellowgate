@@ -14,20 +14,25 @@ Author: Physics Analysis Tools
 """
 
 from __future__ import annotations
-import numpy as np
-import matplotlib.pyplot as plt
+
+import logging
 import math
 import os
-import logging
-from typing import Optional, Tuple, Dict, List, Union, Any
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import matplotlib.pyplot as plt
+import numpy as np
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # Suppress warnings
 import warnings
-warnings.filterwarnings('ignore')
+
+warnings.filterwarnings("ignore")
 
 # Type alias for random generator
 RandomGenerator = np.random.Generator
@@ -39,16 +44,21 @@ np.random.seed(42)
 # Core differentiable functions
 # -----------------------------
 
+
 def sigmoid(x: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
     """Stable sigmoid function."""
     return 1.0 / (1.0 + np.exp(-np.clip(x, -500, 500)))  # type: ignore
+
 
 def logit(p: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
     """Inverse sigmoid (logit) function."""
     p_clipped = np.clip(p, 1e-7, 1 - 1e-7)  # type: ignore
     return np.log(p_clipped / (1 - p_clipped))
 
-def sample_gumbel(shape: Union[int, Tuple[int, ...]], rng: RandomGenerator) -> np.ndarray:
+
+def sample_gumbel(
+    shape: Union[int, Tuple[int, ...]], rng: RandomGenerator
+) -> np.ndarray:
     """
     Sample from standard Gumbel distribution using inverse CDF method.
 
@@ -71,11 +81,15 @@ def sample_gumbel(shape: Union[int, Tuple[int, ...]], rng: RandomGenerator) -> n
     u = rng.uniform(0, 1, shape)
     return -np.log(-np.log(u))
 
+
 # -----------------------------
 # Data generation
 # -----------------------------
 
-def generate_physics_like_data(n_samples: int = 10000, signal_fraction: float = 0.3) -> Tuple[np.ndarray, np.ndarray]:
+
+def generate_physics_like_data(
+    n_samples: int = 10000, signal_fraction: float = 0.3
+) -> Tuple[np.ndarray, np.ndarray]:
     """Generate synthetic physics-like data with signal and background."""
     n_signal = int(n_samples * signal_fraction)
     n_background = n_samples - n_signal
@@ -95,9 +109,11 @@ def generate_physics_like_data(n_samples: int = 10000, signal_fraction: float = 
     indices = np.random.permutation(len(all_data))
     return all_data[indices], all_labels[indices]
 
+
 # -----------------------------
 # Cut function analogy to sine/cosine example
 # -----------------------------
+
 
 def f_cut_discrete(data_point: float, threshold: float, k: int) -> float:
     """
@@ -123,6 +139,7 @@ def f_cut_discrete(data_point: float, threshold: float, k: int) -> float:
     """
     # Pure Heaviside step function
     return float(k)  # Simply return the binary decision
+
 
 def f_cut_relaxed(data: np.ndarray, threshold: float, sharpness: float = 1.0) -> float:
     """
@@ -150,6 +167,7 @@ def f_cut_relaxed(data: np.ndarray, threshold: float, sharpness: float = 1.0) ->
     # So the expectation is just the mean selection probability
     return float(np.mean(p))  # type: ignore
 
+
 def df_cut_relaxed(data: np.ndarray, threshold: float, sharpness: float = 1.0) -> float:
     """
     Analytical gradient of the relaxed Heaviside function.
@@ -169,12 +187,18 @@ def df_cut_relaxed(data: np.ndarray, threshold: float, sharpness: float = 1.0) -
     # Since E[H] = mean(p), the gradient is mean(dp/dθ)
     return float(np.mean(dp_dtheta))
 
+
 # -----------------------------
 # Gumbel-Max trick implementation
 # -----------------------------
 
-def bernoulli_gumbel_max(data: np.ndarray, threshold: float, sharpness: float = 1.0,
-                        rng: Optional[RandomGenerator] = None) -> np.ndarray:
+
+def bernoulli_gumbel_max(
+    data: np.ndarray,
+    threshold: float,
+    sharpness: float = 1.0,
+    rng: Optional[RandomGenerator] = None,
+) -> np.ndarray:
     """
     Sample Bernoulli decisions using the Gumbel-Max trick.
 
@@ -217,8 +241,14 @@ def bernoulli_gumbel_max(data: np.ndarray, threshold: float, sharpness: float = 
 
     return decisions
 
-def bernoulli_gumbel_max_soft(data: np.ndarray, threshold: float, tau: float = 1.0,
-                             sharpness: float = 1.0, rng: Optional[RandomGenerator] = None) -> np.ndarray:
+
+def bernoulli_gumbel_max_soft(
+    data: np.ndarray,
+    threshold: float,
+    tau: float = 1.0,
+    sharpness: float = 1.0,
+    rng: Optional[RandomGenerator] = None,
+) -> np.ndarray:
     """
     Soft version of Gumbel-Max for continuous relaxation.
 
@@ -242,11 +272,15 @@ def bernoulli_gumbel_max_soft(data: np.ndarray, threshold: float, tau: float = 1
 
     return np.asarray(soft_decisions)
 
+
 # -----------------------------
 # Efficiency and performance metrics
 # -----------------------------
 
-def compute_efficiency(selected: np.ndarray, true_labels: np.ndarray) -> Dict[str, float]:
+
+def compute_efficiency(
+    selected: np.ndarray, true_labels: np.ndarray
+) -> Dict[str, float]:
     """
     Compute signal efficiency and background rejection metrics.
 
@@ -261,10 +295,18 @@ def compute_efficiency(selected: np.ndarray, true_labels: np.ndarray) -> Dict[st
     background_mask = true_labels == 0
 
     # Signal efficiency: fraction of signal events selected
-    signal_eff = np.sum(selected[signal_mask]) / np.sum(signal_mask) if np.sum(signal_mask) > 0 else 0
+    signal_eff = (
+        np.sum(selected[signal_mask]) / np.sum(signal_mask)
+        if np.sum(signal_mask) > 0
+        else 0
+    )
 
     # Background efficiency (we want this low): fraction of background selected
-    background_eff = np.sum(selected[background_mask]) / np.sum(background_mask) if np.sum(background_mask) > 0 else 0
+    background_eff = (
+        np.sum(selected[background_mask]) / np.sum(background_mask)
+        if np.sum(background_mask) > 0
+        else 0
+    )
 
     # Background rejection: 1 - background efficiency
     background_rej = 1 - background_eff
@@ -273,14 +315,17 @@ def compute_efficiency(selected: np.ndarray, true_labels: np.ndarray) -> Dict[st
     purity = np.sum(selected[signal_mask]) / np.sum(selected) if np.sum(selected) > 0 else 0  # type: ignore
 
     return {
-        'signal_efficiency': signal_eff,
-        'background_efficiency': background_eff,
-        'background_rejection': background_rej,
-        'purity': purity,
-        'n_selected': int(np.sum(selected))  # type: ignore
+        "signal_efficiency": signal_eff,
+        "background_efficiency": background_eff,
+        "background_rejection": background_rej,
+        "purity": purity,
+        "n_selected": int(np.sum(selected)),  # type: ignore
     }
 
-def compute_soft_efficiency(soft_probs: np.ndarray, true_labels: np.ndarray) -> Dict[str, float]:
+
+def compute_soft_efficiency(
+    soft_probs: np.ndarray, true_labels: np.ndarray
+) -> Dict[str, float]:
     """
     Compute expected efficiency metrics using soft probabilities.
 
@@ -293,7 +338,9 @@ def compute_soft_efficiency(soft_probs: np.ndarray, true_labels: np.ndarray) -> 
     signal_eff = np.mean(soft_probs[signal_mask]) if np.sum(signal_mask) > 0 else 0
 
     # Expected background efficiency
-    background_eff = np.mean(soft_probs[background_mask]) if np.sum(background_mask) > 0 else 0
+    background_eff = (
+        np.mean(soft_probs[background_mask]) if np.sum(background_mask) > 0 else 0
+    )
 
     # Expected background rejection
     background_rej = 1 - background_eff
@@ -306,20 +353,27 @@ def compute_soft_efficiency(soft_probs: np.ndarray, true_labels: np.ndarray) -> 
     purity = signal_contribution / n_selected_expected if n_selected_expected > 0 else 0
 
     return {
-        'signal_efficiency': float(signal_eff),
-        'background_efficiency': float(background_eff),
-        'background_rejection': float(background_rej),
-        'purity': float(purity),
-        'n_selected': float(n_selected_expected)
+        "signal_efficiency": float(signal_eff),
+        "background_efficiency": float(background_eff),
+        "background_rejection": float(background_rej),
+        "purity": float(purity),
+        "n_selected": float(n_selected_expected),
     }
+
 
 # -----------------------------
 # Gradient estimation methods
 # -----------------------------
 
-def grad_finite_difference_cuts(threshold: float, data: np.ndarray, sharpness: float = 1.0,
-                               n_samples: int = 5000, delta: float = 1e-3,
-                               rng: Optional[RandomGenerator] = None) -> float:
+
+def grad_finite_difference_cuts(
+    threshold: float,
+    data: np.ndarray,
+    sharpness: float = 1.0,
+    n_samples: int = 5000,
+    delta: float = 1e-3,
+    rng: Optional[RandomGenerator] = None,
+) -> float:
     """
     Finite-difference gradient estimator for threshold cuts.
 
@@ -339,16 +393,24 @@ def grad_finite_difference_cuts(threshold: float, data: np.ndarray, sharpness: f
     k0 = bernoulli_gumbel_max(data_sample, threshold, sharpness, rng)
     k1 = bernoulli_gumbel_max(data_sample, threshold + delta, sharpness, rng)
 
-    f0 = np.mean([f_cut_discrete(x, threshold, int(k))
-                  for x, k in zip(data_sample, k0)])
-    f1 = np.mean([f_cut_discrete(x, threshold + delta, int(k))
-                  for x, k in zip(data_sample, k1)])
+    f0 = np.mean(
+        [f_cut_discrete(x, threshold, int(k)) for x, k in zip(data_sample, k0)]
+    )
+    f1 = np.mean(
+        [f_cut_discrete(x, threshold + delta, int(k)) for x, k in zip(data_sample, k1)]
+    )
 
     return float((f1 - f0) / delta)
 
-def grad_reinforce_cuts(threshold: float, data: np.ndarray, sharpness: float = 1.0,
-                       n_samples: int = 5000, baseline: Optional[float] = None,
-                       rng: Optional[RandomGenerator] = None) -> float:
+
+def grad_reinforce_cuts(
+    threshold: float,
+    data: np.ndarray,
+    sharpness: float = 1.0,
+    n_samples: int = 5000,
+    baseline: Optional[float] = None,
+    rng: Optional[RandomGenerator] = None,
+) -> float:
     """
     REINFORCE gradient estimator for threshold cuts.
 
@@ -372,8 +434,9 @@ def grad_reinforce_cuts(threshold: float, data: np.ndarray, sharpness: float = 1
     decisions = bernoulli_gumbel_max(data_sample, threshold, sharpness, rng)
 
     # Compute function values (Heaviside decisions)
-    f_values = np.array([f_cut_discrete(x, threshold, int(k))
-                        for x, k in zip(data_sample, decisions)])
+    f_values = np.array(
+        [f_cut_discrete(x, threshold, int(k)) for x, k in zip(data_sample, decisions)]
+    )
 
     # For Heaviside, there are no pathwise gradients w.r.t. threshold
     # The function is f(x,k) = k, which doesn't depend on threshold directly
@@ -385,8 +448,14 @@ def grad_reinforce_cuts(threshold: float, data: np.ndarray, sharpness: float = 1
 
     return float(np.mean(score_terms))
 
-def grad_reinforce_mean_baseline_cuts(threshold: float, data: np.ndarray, sharpness: float = 1.0,
-                                     n_samples: int = 5000, rng: Optional[RandomGenerator] = None) -> float:
+
+def grad_reinforce_mean_baseline_cuts(
+    threshold: float,
+    data: np.ndarray,
+    sharpness: float = 1.0,
+    n_samples: int = 5000,
+    rng: Optional[RandomGenerator] = None,
+) -> float:
     """
     REINFORCE with mean baseline for threshold cuts.
 
@@ -410,8 +479,9 @@ def grad_reinforce_mean_baseline_cuts(threshold: float, data: np.ndarray, sharpn
     decisions = bernoulli_gumbel_max(data_sample, threshold, sharpness, rng)
 
     # Function values (Heaviside)
-    f_values = np.array([f_cut_discrete(x, threshold, int(k))
-                        for x, k in zip(data_sample, decisions)])
+    f_values = np.array(
+        [f_cut_discrete(x, threshold, int(k)) for x, k in zip(data_sample, decisions)]
+    )
 
     # Use mean as baseline
     baseline = float(np.mean(f_values))  # type: ignore
@@ -424,9 +494,15 @@ def grad_reinforce_mean_baseline_cuts(threshold: float, data: np.ndarray, sharpn
 
     return float(np.mean(score_terms))
 
-def grad_gumbel_softmax_ste_cuts(threshold: float, data: np.ndarray, sharpness: float = 1.0,
-                                tau: float = 0.5, n_samples: int = 5000,
-                                rng: Optional[RandomGenerator] = None) -> float:
+
+def grad_gumbel_softmax_ste_cuts(
+    threshold: float,
+    data: np.ndarray,
+    sharpness: float = 1.0,
+    tau: float = 0.5,
+    n_samples: int = 5000,
+    rng: Optional[RandomGenerator] = None,
+) -> float:
     """
     Gumbel-Softmax Straight-Through Estimator for threshold cuts.
 
@@ -447,11 +523,17 @@ def grad_gumbel_softmax_ste_cuts(threshold: float, data: np.ndarray, sharpness: 
     hard_decisions = bernoulli_gumbel_max(data_sample, threshold, sharpness, rng)
 
     # Soft decisions (for gradients)
-    soft_decisions = bernoulli_gumbel_max_soft(data_sample, threshold, tau, sharpness, rng)
+    soft_decisions = bernoulli_gumbel_max_soft(
+        data_sample, threshold, tau, sharpness, rng
+    )
 
     # Function evaluation using hard decisions (Heaviside)
-    f_values = np.array([f_cut_discrete(x, threshold, int(k))
-                        for x, k in zip(data_sample, hard_decisions)])
+    f_values = np.array(
+        [
+            f_cut_discrete(x, threshold, int(k))
+            for x, k in zip(data_sample, hard_decisions)
+        ]
+    )
 
     # For Heaviside f(x,k) = k, no direct pathwise gradients w.r.t. threshold
 
@@ -471,9 +553,11 @@ def grad_gumbel_softmax_ste_cuts(threshold: float, data: np.ndarray, sharpness: 
 
     return float(ste_gradient)
 
+
 # -----------------------------
 # Comparison and visualization
 # -----------------------------
+
 
 def compare_cut_methods():
     """Compare different cut approaches: hard, expectation, and sampling with efficiency analysis."""
@@ -491,8 +575,9 @@ def compare_cut_methods():
 
     # Method 1: Hard cut (non-differentiable)
     hard_decisions = (data >= threshold).astype(float)
-    hard_reward = np.mean([f_cut_discrete(x, threshold, int(k))
-                          for x, k in zip(data, hard_decisions)])
+    hard_reward = np.mean(
+        [f_cut_discrete(x, threshold, int(k)) for x, k in zip(data, hard_decisions)]
+    )
 
     # Method 2: Expectation (differentiable)
     expectation_reward = f_cut_relaxed(data, threshold, sharpness)
@@ -505,8 +590,9 @@ def compare_cut_methods():
     # Method 3: Stochastic sampling (unbiased but high variance)
     rng = np.random.default_rng(42)
     stoch_decisions = bernoulli_gumbel_max(data, threshold, sharpness, rng)
-    stoch_reward = np.mean([f_cut_discrete(x, threshold, int(k))
-                           for x, k in zip(data, stoch_decisions)])
+    stoch_reward = np.mean(
+        [f_cut_discrete(x, threshold, int(k)) for x, k in zip(data, stoch_decisions)]
+    )
 
     print(f"\nReward comparison:")
     print(f"  • Hard cut (non-differentiable):     {hard_reward:.6f}")
@@ -522,9 +608,15 @@ def compare_cut_methods():
     print("-" * 80)
     print("Method           | Signal Eff | Bkg Rej | Purity | N Selected | Reward")
     print("-" * 80)
-    print(f"Hard Cut         | {hard_metrics['signal_efficiency']:.3f}      | {hard_metrics['background_rejection']:.3f}   | {hard_metrics['purity']:.3f}  | {hard_metrics['n_selected']:4d}       | {hard_reward:.6f}")
-    print(f"Soft (Expected)  | {soft_metrics['signal_efficiency']:.3f}      | {soft_metrics['background_rejection']:.3f}   | {soft_metrics['purity']:.3f}  | {soft_metrics['n_selected']:7.1f}    | {expectation_reward:.6f}")
-    print(f"Stochastic       | {stoch_metrics['signal_efficiency']:.3f}      | {stoch_metrics['background_rejection']:.3f}   | {stoch_metrics['purity']:.3f}  | {stoch_metrics['n_selected']:4d}       | {stoch_reward:.6f}")
+    print(
+        f"Hard Cut         | {hard_metrics['signal_efficiency']:.3f}      | {hard_metrics['background_rejection']:.3f}   | {hard_metrics['purity']:.3f}  | {hard_metrics['n_selected']:4d}       | {hard_reward:.6f}"
+    )
+    print(
+        f"Soft (Expected)  | {soft_metrics['signal_efficiency']:.3f}      | {soft_metrics['background_rejection']:.3f}   | {soft_metrics['purity']:.3f}  | {soft_metrics['n_selected']:7.1f}    | {expectation_reward:.6f}"
+    )
+    print(
+        f"Stochastic       | {stoch_metrics['signal_efficiency']:.3f}      | {stoch_metrics['background_rejection']:.3f}   | {stoch_metrics['purity']:.3f}  | {stoch_metrics['n_selected']:4d}       | {stoch_reward:.6f}"
+    )
 
     # Show convergence of stochastic sampling to expectation
     n_trials = 100
@@ -534,21 +626,26 @@ def compare_cut_methods():
     for trial in range(n_trials):
         rng_trial = np.random.default_rng(trial)
         stoch_dec = bernoulli_gumbel_max(data, threshold, sharpness, rng_trial)
-        reward = np.mean([f_cut_discrete(x, threshold, int(k))
-                         for x, k in zip(data, stoch_dec)])
+        reward = np.mean(
+            [f_cut_discrete(x, threshold, int(k)) for x, k in zip(data, stoch_dec)]
+        )
         stoch_rewards.append(reward)
 
         # Track efficiency
         trial_metrics = compute_efficiency(stoch_dec, labels)
-        stoch_efficiencies.append(trial_metrics['signal_efficiency'])
+        stoch_efficiencies.append(trial_metrics["signal_efficiency"])
 
     print(f"\nStochastic sampling convergence ({n_trials} trials):")
     print(f"  • Mean reward:                        {np.mean(stoch_rewards):.6f}")
     print(f"  • Std reward:                         {np.std(stoch_rewards):.6f}")
     print(f"  • Expectation target:                 {expectation_reward:.6f}")
-    print(f"  • Bias:                               {np.mean(stoch_rewards) - expectation_reward:.6f}")
+    print(
+        f"  • Bias:                               {np.mean(stoch_rewards) - expectation_reward:.6f}"
+    )
     print(f"  • Mean signal efficiency:             {np.mean(stoch_efficiencies):.6f}")
-    print(f"  • Expected signal efficiency:         {soft_metrics['signal_efficiency']:.6f}")
+    print(
+        f"  • Expected signal efficiency:         {soft_metrics['signal_efficiency']:.6f}"
+    )
 
     # Create plots directory
     plots_dir = "plots"
@@ -563,23 +660,47 @@ def compare_cut_methods():
     signal_data = data[labels == 1]
     background_data = data[labels == 0]
 
-    plt.hist(background_data, bins=30, alpha=0.7, label='Background', color='red', density=True)
-    plt.hist(signal_data, bins=30, alpha=0.7, label='Signal', color='blue', density=True)
-    plt.axvline(threshold, color='black', linestyle='--', linewidth=2, label=f'Threshold = {threshold}')
+    plt.hist(
+        background_data,
+        bins=30,
+        alpha=0.7,
+        label="Background",
+        color="red",
+        density=True,
+    )
+    plt.hist(
+        signal_data, bins=30, alpha=0.7, label="Signal", color="blue", density=True
+    )
+    plt.axvline(
+        threshold,
+        color="black",
+        linestyle="--",
+        linewidth=2,
+        label=f"Threshold = {threshold}",
+    )
 
     # Show selection probabilities
     x_range = np.linspace(data.min(), data.max(), 100)
     p_range = sigmoid(sharpness * (x_range - threshold))
-    plt.plot(x_range, p_range * plt.gca().get_ylim()[1], 'green', linewidth=2,
-             label='Selection Probability')
+    plt.plot(
+        x_range,
+        p_range * plt.gca().get_ylim()[1],
+        "green",
+        linewidth=2,
+        label="Selection Probability",
+    )
 
-    plt.xlabel('Data Value')
-    plt.ylabel('Density')
-    plt.title('Data Distribution and Soft Cut')
+    plt.xlabel("Data Value")
+    plt.ylabel("Density")
+    plt.title("Data Distribution and Soft Cut")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, '01_data_distribution_and_soft_cut.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(plots_dir, "01_data_distribution_and_soft_cut.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     # Plot 2: Hard cut result
@@ -587,16 +708,22 @@ def compare_cut_methods():
     selected_hard = data[hard_decisions == 1]
     rejected_hard = data[hard_decisions == 0]
 
-    plt.hist(rejected_hard, bins=30, alpha=0.7, label='Rejected', color='red', density=True)
-    plt.hist(selected_hard, bins=30, alpha=0.7, label='Selected', color='green', density=True)
-    plt.axvline(threshold, color='black', linestyle='--', linewidth=2)
-    plt.xlabel('Data Value')
-    plt.ylabel('Density')
-    plt.title(f'Hard Cut Result\n({len(selected_hard)} selected)')
+    plt.hist(
+        rejected_hard, bins=30, alpha=0.7, label="Rejected", color="red", density=True
+    )
+    plt.hist(
+        selected_hard, bins=30, alpha=0.7, label="Selected", color="green", density=True
+    )
+    plt.axvline(threshold, color="black", linestyle="--", linewidth=2)
+    plt.xlabel("Data Value")
+    plt.ylabel("Density")
+    plt.title(f"Hard Cut Result\n({len(selected_hard)} selected)")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, '02_hard_cut_result.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(plots_dir, "02_hard_cut_result.png"), dpi=300, bbox_inches="tight"
+    )
     plt.close()
 
     # Plot 3: Single stochastic cut result
@@ -604,40 +731,66 @@ def compare_cut_methods():
     selected_stoch = data[stoch_decisions == 1]
     rejected_stoch = data[stoch_decisions == 0]
 
-    plt.hist(rejected_stoch, bins=30, alpha=0.7, label='Rejected', color='red', density=True)
-    plt.hist(selected_stoch, bins=30, alpha=0.7, label='Selected', color='green', density=True)
-    plt.axvline(threshold, color='black', linestyle='--', linewidth=2)
-    plt.xlabel('Data Value')
-    plt.ylabel('Density')
-    plt.title(f'Stochastic Cut Result\n({len(selected_stoch)} selected)')
+    plt.hist(
+        rejected_stoch, bins=30, alpha=0.7, label="Rejected", color="red", density=True
+    )
+    plt.hist(
+        selected_stoch,
+        bins=30,
+        alpha=0.7,
+        label="Selected",
+        color="green",
+        density=True,
+    )
+    plt.axvline(threshold, color="black", linestyle="--", linewidth=2)
+    plt.xlabel("Data Value")
+    plt.ylabel("Density")
+    plt.title(f"Stochastic Cut Result\n({len(selected_stoch)} selected)")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, '03_stochastic_cut_result.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(plots_dir, "03_stochastic_cut_result.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     # Plot 3b: Multiple stochastic cut samples (showing sampling variability)
     plt.figure(figsize=(10, 6))
-    colors = ['green', 'orange', 'purple']
+    colors = ["green", "orange", "purple"]
     n_stochastic_samples = 3
 
     for i in range(min(n_stochastic_samples, len(colors))):
         rng_sample = np.random.default_rng(i + 42)  # Different seed for each sample
-        stoch_sample_decisions = bernoulli_gumbel_max(data, threshold, sharpness, rng_sample)
+        stoch_sample_decisions = bernoulli_gumbel_max(
+            data, threshold, sharpness, rng_sample
+        )
         selected_data_stoch = data[stoch_sample_decisions == 1]
 
-        plt.hist(selected_data_stoch, bins=30, alpha=0.5,
-                label=f'Stochastic Sample {i+1} ({len(selected_data_stoch)} events)',
-                color=colors[i], density=True)
+        plt.hist(
+            selected_data_stoch,
+            bins=30,
+            alpha=0.5,
+            label=f"Stochastic Sample {i+1} ({len(selected_data_stoch)} events)",
+            color=colors[i],
+            density=True,
+        )
 
-    plt.axvline(threshold, color='black', linestyle='--', linewidth=2, label='Threshold')
-    plt.xlabel('Data Value')
-    plt.ylabel('Density')
-    plt.title('Multiple Stochastic Cut Samples')
+    plt.axvline(
+        threshold, color="black", linestyle="--", linewidth=2, label="Threshold"
+    )
+    plt.xlabel("Data Value")
+    plt.ylabel("Density")
+    plt.title("Multiple Stochastic Cut Samples")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, '03b_multiple_stochastic_samples.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(plots_dir, "03b_multiple_stochastic_samples.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     # Plot 4: ROC-like curve
@@ -650,90 +803,152 @@ def compare_cut_methods():
     for thresh in threshold_sweep:
         probs = sigmoid(sharpness * (data - thresh))
         soft_met = compute_soft_efficiency(probs, labels)  # type: ignore
-        signal_effs.append(soft_met['signal_efficiency'])
-        background_effs.append(soft_met['background_efficiency'])
+        signal_effs.append(soft_met["signal_efficiency"])
+        background_effs.append(soft_met["background_efficiency"])
 
-    plt.plot(background_effs, signal_effs, 'g-', linewidth=2, label='Soft Cut ROC')
+    plt.plot(background_effs, signal_effs, "g-", linewidth=2, label="Soft Cut ROC")
 
     # Mark current operating point
-    plt.scatter(soft_metrics['background_efficiency'], soft_metrics['signal_efficiency'],
-               color='red', s=100, zorder=5, label=f'Current Operating Point')
+    plt.scatter(
+        soft_metrics["background_efficiency"],
+        soft_metrics["signal_efficiency"],
+        color="red",
+        s=100,
+        zorder=5,
+        label=f"Current Operating Point",
+    )
 
-    plt.xlabel('Background Efficiency')
-    plt.ylabel('Signal Efficiency')
-    plt.title('ROC Curve')
+    plt.xlabel("Background Efficiency")
+    plt.ylabel("Signal Efficiency")
+    plt.title("ROC Curve")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, '04_roc_curve.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(plots_dir, "04_roc_curve.png"), dpi=300, bbox_inches="tight"
+    )
     plt.close()
 
     # Plot 5: Reward convergence
     plt.figure(figsize=(10, 6))
-    plt.hist(stoch_rewards, bins=20, alpha=0.7, density=True, label='Stochastic Samples')
-    plt.axvline(expectation_reward, color='red', linestyle='-', linewidth=2, label='Expectation')
-    plt.axvline(float(hard_reward), color='green', linestyle='--', linewidth=2, label='Hard Cut')
-    plt.xlabel('Reward Value')
-    plt.ylabel('Density')
-    plt.title('Reward Distribution')
+    plt.hist(
+        stoch_rewards, bins=20, alpha=0.7, density=True, label="Stochastic Samples"
+    )
+    plt.axvline(
+        expectation_reward, color="red", linestyle="-", linewidth=2, label="Expectation"
+    )
+    plt.axvline(
+        float(hard_reward), color="green", linestyle="--", linewidth=2, label="Hard Cut"
+    )
+    plt.xlabel("Reward Value")
+    plt.ylabel("Density")
+    plt.title("Reward Distribution")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, '05_reward_convergence.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(plots_dir, "05_reward_convergence.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     # Plot 6: Cumulative average convergence
     plt.figure(figsize=(10, 6))
     cumulative_avg = np.cumsum(stoch_rewards) / np.arange(1, len(stoch_rewards) + 1)
-    plt.plot(cumulative_avg, 'b-', linewidth=2, label='Cumulative Average')
-    plt.axhline(expectation_reward, color='red', linestyle='-', linewidth=2, label='Expectation')
-    plt.xlabel('Trial Number')
-    plt.ylabel('Cumulative Average Reward')
-    plt.title('Convergence to Expectation')
+    plt.plot(cumulative_avg, "b-", linewidth=2, label="Cumulative Average")
+    plt.axhline(
+        expectation_reward, color="red", linestyle="-", linewidth=2, label="Expectation"
+    )
+    plt.xlabel("Trial Number")
+    plt.ylabel("Cumulative Average Reward")
+    plt.title("Convergence to Expectation")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, '06_cumulative_convergence.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(plots_dir, "06_cumulative_convergence.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     # Plot 7: Efficiency comparison bar chart
     plt.figure(figsize=(10, 6))
-    methods = ['Hard', 'Soft\n(Expected)', 'Stochastic\n(Sample)']
-    signal_effs_comp = [hard_metrics['signal_efficiency'],
-                       soft_metrics['signal_efficiency'],
-                       stoch_metrics['signal_efficiency']]
-    background_rejs_comp = [hard_metrics['background_rejection'],
-                           soft_metrics['background_rejection'],
-                           stoch_metrics['background_rejection']]
+    methods = ["Hard", "Soft\n(Expected)", "Stochastic\n(Sample)"]
+    signal_effs_comp = [
+        hard_metrics["signal_efficiency"],
+        soft_metrics["signal_efficiency"],
+        stoch_metrics["signal_efficiency"],
+    ]
+    background_rejs_comp = [
+        hard_metrics["background_rejection"],
+        soft_metrics["background_rejection"],
+        stoch_metrics["background_rejection"],
+    ]
 
     x_pos = np.arange(len(methods))
     width = 0.35
 
-    plt.bar(x_pos - width/2, signal_effs_comp, width, label='Signal Efficiency', alpha=0.7, color='blue')
-    plt.bar(x_pos + width/2, background_rejs_comp, width, label='Background Rejection', alpha=0.7, color='red')
+    plt.bar(
+        x_pos - width / 2,
+        signal_effs_comp,
+        width,
+        label="Signal Efficiency",
+        alpha=0.7,
+        color="blue",
+    )
+    plt.bar(
+        x_pos + width / 2,
+        background_rejs_comp,
+        width,
+        label="Background Rejection",
+        alpha=0.7,
+        color="red",
+    )
 
-    plt.xlabel('Method')
-    plt.ylabel('Efficiency')
-    plt.title('Efficiency Comparison')
+    plt.xlabel("Method")
+    plt.ylabel("Efficiency")
+    plt.title("Efficiency Comparison")
     plt.xticks(x_pos, methods)
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, '07_efficiency_comparison.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(plots_dir, "07_efficiency_comparison.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     # Plot 8: Efficiency variance over trials
     plt.figure(figsize=(10, 6))
-    plt.plot(stoch_efficiencies, 'b-', alpha=0.7, linewidth=1)
-    plt.axhline(float(np.mean(stoch_efficiencies)), color='blue', linestyle='-', linewidth=2, label='Mean')
-    plt.axhline(soft_metrics['signal_efficiency'], color='red', linestyle='--', linewidth=2, label='Expected')
-    plt.xlabel('Trial Number')
-    plt.ylabel('Signal Efficiency')
-    plt.title('Signal Efficiency Variance')
+    plt.plot(stoch_efficiencies, "b-", alpha=0.7, linewidth=1)
+    plt.axhline(
+        float(np.mean(stoch_efficiencies)),
+        color="blue",
+        linestyle="-",
+        linewidth=2,
+        label="Mean",
+    )
+    plt.axhline(
+        soft_metrics["signal_efficiency"],
+        color="red",
+        linestyle="--",
+        linewidth=2,
+        label="Expected",
+    )
+    plt.xlabel("Trial Number")
+    plt.ylabel("Signal Efficiency")
+    plt.title("Signal Efficiency Variance")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, '08_efficiency_variance.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(plots_dir, "08_efficiency_variance.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     # Plot 9: Selection probability vs data value
@@ -745,25 +960,43 @@ def compare_cut_methods():
     sorted_labels = labels[sorted_indices]
 
     # Plot probabilities
-    plt.plot(sorted_data, sorted_probs, 'g-', linewidth=2, label='Selection Probability')
+    plt.plot(
+        sorted_data, sorted_probs, "g-", linewidth=2, label="Selection Probability"
+    )
 
     # Overlay true labels
     signal_indices = sorted_labels == 1
     background_indices = sorted_labels == 0
-    plt.scatter(sorted_data[signal_indices], np.ones(np.sum(signal_indices))*1.05,
-               c='blue', s=10, alpha=0.5, label='Signal Events')
-    plt.scatter(sorted_data[background_indices], np.ones(np.sum(background_indices))*-0.05,
-               c='red', s=10, alpha=0.5, label='Background Events')
+    plt.scatter(
+        sorted_data[signal_indices],
+        np.ones(np.sum(signal_indices)) * 1.05,
+        c="blue",
+        s=10,
+        alpha=0.5,
+        label="Signal Events",
+    )
+    plt.scatter(
+        sorted_data[background_indices],
+        np.ones(np.sum(background_indices)) * -0.05,
+        c="red",
+        s=10,
+        alpha=0.5,
+        label="Background Events",
+    )
 
-    plt.axvline(threshold, color='black', linestyle='--', alpha=0.7)
-    plt.xlabel('Data Value')
-    plt.ylabel('Selection Probability')
-    plt.title('Selection Function vs True Labels')
+    plt.axvline(threshold, color="black", linestyle="--", alpha=0.7)
+    plt.xlabel("Data Value")
+    plt.ylabel("Selection Probability")
+    plt.title("Selection Function vs True Labels")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.ylim(-0.1, 1.1)
     plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, '09_selection_probability_vs_labels.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(plots_dir, "09_selection_probability_vs_labels.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     # Plot 10: Purity vs threshold
@@ -772,18 +1005,30 @@ def compare_cut_methods():
     for thresh in threshold_sweep:
         probs = sigmoid(sharpness * (data - thresh))
         soft_met = compute_soft_efficiency(probs, labels)  # type: ignore
-        purities.append(soft_met['purity'])
+        purities.append(soft_met["purity"])
 
-    plt.plot(threshold_sweep, purities, 'purple', linewidth=2, label='Expected Purity')
-    plt.axvline(threshold, color='black', linestyle='--', alpha=0.7, label='Current Threshold')
-    plt.axhline(soft_metrics['purity'], color='red', linestyle='-', alpha=0.7, label='Current Purity')
-    plt.xlabel('Threshold')
-    plt.ylabel('Purity')
-    plt.title('Purity vs Threshold')
+    plt.plot(threshold_sweep, purities, "purple", linewidth=2, label="Expected Purity")
+    plt.axvline(
+        threshold, color="black", linestyle="--", alpha=0.7, label="Current Threshold"
+    )
+    plt.axhline(
+        soft_metrics["purity"],
+        color="red",
+        linestyle="-",
+        alpha=0.7,
+        label="Current Purity",
+    )
+    plt.xlabel("Threshold")
+    plt.ylabel("Purity")
+    plt.title("Purity vs Threshold")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, '10_purity_vs_threshold.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(plots_dir, "10_purity_vs_threshold.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     # Plot 11: N selected vs threshold
@@ -792,64 +1037,102 @@ def compare_cut_methods():
     for thresh in threshold_sweep:
         probs = sigmoid(sharpness * (data - thresh))
         soft_met = compute_soft_efficiency(probs, labels)  # type: ignore
-        n_selected_vals.append(soft_met['n_selected'])
+        n_selected_vals.append(soft_met["n_selected"])
 
-    plt.plot(threshold_sweep, n_selected_vals, 'orange', linewidth=2, label='Expected N Selected')
-    plt.axvline(threshold, color='black', linestyle='--', alpha=0.7, label='Current Threshold')
-    plt.axhline(soft_metrics['n_selected'], color='red', linestyle='-', alpha=0.7, label='Current N Selected')
-    plt.xlabel('Threshold')
-    plt.ylabel('Number of Selected Events')
-    plt.title('Selection Rate vs Threshold')
+    plt.plot(
+        threshold_sweep,
+        n_selected_vals,
+        "orange",
+        linewidth=2,
+        label="Expected N Selected",
+    )
+    plt.axvline(
+        threshold, color="black", linestyle="--", alpha=0.7, label="Current Threshold"
+    )
+    plt.axhline(
+        soft_metrics["n_selected"],
+        color="red",
+        linestyle="-",
+        alpha=0.7,
+        label="Current N Selected",
+    )
+    plt.xlabel("Threshold")
+    plt.ylabel("Number of Selected Events")
+    plt.title("Selection Rate vs Threshold")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, '11_selection_rate_vs_threshold.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(plots_dir, "11_selection_rate_vs_threshold.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     # Plot 12: Summary metrics
     plt.figure(figsize=(10, 6))
-    metric_names = ['Signal\nEff', 'Bkg\nRej', 'Purity']
-    hard_vals = [hard_metrics['signal_efficiency'], hard_metrics['background_rejection'], hard_metrics['purity']]
-    soft_vals = [soft_metrics['signal_efficiency'], soft_metrics['background_rejection'], soft_metrics['purity']]
-    stoch_vals = [stoch_metrics['signal_efficiency'], stoch_metrics['background_rejection'], stoch_metrics['purity']]
+    metric_names = ["Signal\nEff", "Bkg\nRej", "Purity"]
+    hard_vals = [
+        hard_metrics["signal_efficiency"],
+        hard_metrics["background_rejection"],
+        hard_metrics["purity"],
+    ]
+    soft_vals = [
+        soft_metrics["signal_efficiency"],
+        soft_metrics["background_rejection"],
+        soft_metrics["purity"],
+    ]
+    stoch_vals = [
+        stoch_metrics["signal_efficiency"],
+        stoch_metrics["background_rejection"],
+        stoch_metrics["purity"],
+    ]
 
     x_pos = np.arange(len(metric_names))
     width = 0.25
 
-    plt.bar(x_pos - width, hard_vals, width, label='Hard', alpha=0.7, color='green')
-    plt.bar(x_pos, soft_vals, width, label='Soft', alpha=0.7, color='blue')
-    plt.bar(x_pos + width, stoch_vals, width, label='Stoch', alpha=0.7, color='orange')
+    plt.bar(x_pos - width, hard_vals, width, label="Hard", alpha=0.7, color="green")
+    plt.bar(x_pos, soft_vals, width, label="Soft", alpha=0.7, color="blue")
+    plt.bar(x_pos + width, stoch_vals, width, label="Stoch", alpha=0.7, color="orange")
 
-    plt.xlabel('Metric')
-    plt.ylabel('Value')
-    plt.title('Performance Summary')
+    plt.xlabel("Metric")
+    plt.ylabel("Value")
+    plt.title("Performance Summary")
     plt.xticks(x_pos, metric_names)
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.ylim(0, 1)
     plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, '12_performance_summary.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(plots_dir, "12_performance_summary.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     print(f"\n✅ All plots saved to '{plots_dir}' directory:")
-    for i, plot_name in enumerate([
-        '01_data_distribution_and_soft_cut.png',
-        '02_hard_cut_result.png',
-        '03_stochastic_cut_result.png',
-        '03b_multiple_stochastic_samples.png',
-        '04_roc_curve.png',
-        '05_reward_convergence.png',
-        '06_cumulative_convergence.png',
-        '07_efficiency_comparison.png',
-        '08_efficiency_variance.png',
-        '09_selection_probability_vs_labels.png',
-        '10_purity_vs_threshold.png',
-        '11_selection_rate_vs_threshold.png',
-        '12_performance_summary.png'
-    ], 1):
+    for i, plot_name in enumerate(
+        [
+            "01_data_distribution_and_soft_cut.png",
+            "02_hard_cut_result.png",
+            "03_stochastic_cut_result.png",
+            "03b_multiple_stochastic_samples.png",
+            "04_roc_curve.png",
+            "05_reward_convergence.png",
+            "06_cumulative_convergence.png",
+            "07_efficiency_comparison.png",
+            "08_efficiency_variance.png",
+            "09_selection_probability_vs_labels.png",
+            "10_purity_vs_threshold.png",
+            "11_selection_rate_vs_threshold.png",
+            "12_performance_summary.png",
+        ],
+        1,
+    ):
         print(f"  {i:2d}. {plot_name}")
 
     return data, labels, threshold
+
 
 def compare_gradient_methods(plots_dir: str = "plots"):
     """Compare different gradient estimation methods for threshold cuts."""
@@ -871,20 +1154,27 @@ def compare_gradient_methods(plots_dir: str = "plots"):
 
     # Monte Carlo gradient estimators
     rng = np.random.default_rng(42)
-    finite_diff_grads = [grad_finite_difference_cuts(t, data, sharpness, 1000, rng=rng)
-                        for t in thresholds]
+    finite_diff_grads = [
+        grad_finite_difference_cuts(t, data, sharpness, 1000, rng=rng)
+        for t in thresholds
+    ]
 
     rng = np.random.default_rng(42)  # Reset for fair comparison
-    reinforce_grads = [grad_reinforce_cuts(t, data, sharpness, 1000, rng=rng)
-                      for t in thresholds]
+    reinforce_grads = [
+        grad_reinforce_cuts(t, data, sharpness, 1000, rng=rng) for t in thresholds
+    ]
 
     rng = np.random.default_rng(42)
-    reinforce_baseline_grads = [grad_reinforce_mean_baseline_cuts(t, data, sharpness, 1000, rng=rng)
-                               for t in thresholds]
+    reinforce_baseline_grads = [
+        grad_reinforce_mean_baseline_cuts(t, data, sharpness, 1000, rng=rng)
+        for t in thresholds
+    ]
 
     rng = np.random.default_rng(42)
-    gumbel_grads = [grad_gumbel_softmax_ste_cuts(t, data, sharpness, 0.5, 1000, rng=rng)
-                   for t in thresholds]
+    gumbel_grads = [
+        grad_gumbel_softmax_ste_cuts(t, data, sharpness, 0.5, 1000, rng=rng)
+        for t in thresholds
+    ]
 
     # Create gradient plots directory
     grad_plots_dir = os.path.join(plots_dir, "gradient_methods")
@@ -893,18 +1183,39 @@ def compare_gradient_methods(plots_dir: str = "plots"):
 
     # Plot 1: Gradient comparison
     plt.figure(figsize=(10, 6))
-    plt.plot(thresholds, analytical_grads, 'k-', linewidth=3, label='Analytical (Truth)')
-    plt.plot(thresholds, finite_diff_grads, 'r--', linewidth=2, label='Finite Difference')
-    plt.plot(thresholds, reinforce_grads, 'g:', linewidth=2, label='REINFORCE')
-    plt.plot(thresholds, reinforce_baseline_grads, 'b-.', linewidth=2, label='REINFORCE + Baseline')
-    plt.plot(thresholds, gumbel_grads, 'm-', linewidth=2, alpha=0.7, label='Gumbel-Softmax STE')
-    plt.xlabel('Threshold')
-    plt.ylabel('Gradient')
-    plt.title('Gradient Estimation Methods Comparison')
+    plt.plot(
+        thresholds, analytical_grads, "k-", linewidth=3, label="Analytical (Truth)"
+    )
+    plt.plot(
+        thresholds, finite_diff_grads, "r--", linewidth=2, label="Finite Difference"
+    )
+    plt.plot(thresholds, reinforce_grads, "g:", linewidth=2, label="REINFORCE")
+    plt.plot(
+        thresholds,
+        reinforce_baseline_grads,
+        "b-.",
+        linewidth=2,
+        label="REINFORCE + Baseline",
+    )
+    plt.plot(
+        thresholds,
+        gumbel_grads,
+        "m-",
+        linewidth=2,
+        alpha=0.7,
+        label="Gumbel-Softmax STE",
+    )
+    plt.xlabel("Threshold")
+    plt.ylabel("Gradient")
+    plt.title("Gradient Estimation Methods Comparison")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(grad_plots_dir, 'gradient_comparison.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(grad_plots_dir, "gradient_comparison.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     # Plot 2: Error analysis
@@ -914,76 +1225,96 @@ def compare_gradient_methods(plots_dir: str = "plots"):
     reinforce_baseline_errors = np.abs(np.array(reinforce_baseline_grads) - np.array(analytical_grads))  # type: ignore
     gumbel_errors = np.abs(np.array(gumbel_grads) - np.array(analytical_grads))  # type: ignore
 
-    plt.plot(thresholds, finite_diff_errors, 'r--', label='Finite Difference')
-    plt.plot(thresholds, reinforce_errors, 'g:', label='REINFORCE')
-    plt.plot(thresholds, reinforce_baseline_errors, 'b-.', label='REINFORCE + Baseline')
-    plt.plot(thresholds, gumbel_errors, 'm-', alpha=0.7, label='Gumbel-Softmax STE')
-    plt.xlabel('Threshold')
-    plt.ylabel('Absolute Error')
-    plt.title('Gradient Estimation Errors')
+    plt.plot(thresholds, finite_diff_errors, "r--", label="Finite Difference")
+    plt.plot(thresholds, reinforce_errors, "g:", label="REINFORCE")
+    plt.plot(thresholds, reinforce_baseline_errors, "b-.", label="REINFORCE + Baseline")
+    plt.plot(thresholds, gumbel_errors, "m-", alpha=0.7, label="Gumbel-Softmax STE")
+    plt.xlabel("Threshold")
+    plt.ylabel("Absolute Error")
+    plt.title("Gradient Estimation Errors")
     plt.legend()
     plt.grid(True, alpha=0.3)
-    plt.yscale('log')
+    plt.yscale("log")
     plt.tight_layout()
-    plt.savefig(os.path.join(grad_plots_dir, 'gradient_errors.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(grad_plots_dir, "gradient_errors.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     # Plot 3: Function values
     plt.figure(figsize=(10, 6))
     function_vals = [f_cut_relaxed(data, t, sharpness) for t in thresholds]
-    plt.plot(thresholds, function_vals, 'g-', linewidth=2, label='Relaxed Function E[f]')
+    plt.plot(
+        thresholds, function_vals, "g-", linewidth=2, label="Relaxed Function E[f]"
+    )
 
     # Mark where gradient is zero
     zero_crossings = []
-    for i in range(len(analytical_grads)-1):
-        if analytical_grads[i] * analytical_grads[i+1] < 0:
+    for i in range(len(analytical_grads) - 1):
+        if analytical_grads[i] * analytical_grads[i + 1] < 0:
             zero_crossings.append(thresholds[i])
 
     for zc in zero_crossings:
-        plt.axvline(zc, color='red', linestyle='--', alpha=0.7, label='Gradient = 0')
+        plt.axvline(zc, color="red", linestyle="--", alpha=0.7, label="Gradient = 0")
 
-    plt.xlabel('Threshold')
-    plt.ylabel('Function Value')
-    plt.title('Relaxed Function and Critical Points')
+    plt.xlabel("Threshold")
+    plt.ylabel("Function Value")
+    plt.title("Relaxed Function and Critical Points")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(grad_plots_dir, 'function_values_and_critical_points.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(grad_plots_dir, "function_values_and_critical_points.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     # Plot 4: Statistics summary
     plt.figure(figsize=(10, 6))
-    methods = ['Finite\nDiff', 'REINFORCE', 'REINFORCE\n+Baseline', 'Gumbel\nSoftmax']
+    methods = ["Finite\nDiff", "REINFORCE", "REINFORCE\n+Baseline", "Gumbel\nSoftmax"]
     mean_errors = [
         np.mean(finite_diff_errors),
         np.mean(reinforce_errors),
         np.mean(reinforce_baseline_errors),
-        np.mean(gumbel_errors)
+        np.mean(gumbel_errors),
     ]
     std_errors = [
         np.std(finite_diff_errors),
         np.std(reinforce_errors),
         np.std(reinforce_baseline_errors),
-        np.std(gumbel_errors)
+        np.std(gumbel_errors),
     ]
 
     x_pos = np.arange(len(methods))
-    plt.bar(x_pos, mean_errors, yerr=std_errors, capsize=5,
-            color=['red', 'green', 'blue', 'magenta'], alpha=0.7)
+    plt.bar(
+        x_pos,
+        mean_errors,
+        yerr=std_errors,
+        capsize=5,
+        color=["red", "green", "blue", "magenta"],
+        alpha=0.7,
+    )
     plt.xticks(x_pos, methods)
-    plt.ylabel('Mean Absolute Error')
-    plt.title('Method Comparison Summary')
+    plt.ylabel("Mean Absolute Error")
+    plt.title("Method Comparison Summary")
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(grad_plots_dir, 'method_comparison_summary.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(
+        os.path.join(grad_plots_dir, "method_comparison_summary.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     print(f"\n✅ Gradient method plots saved to '{grad_plots_dir}' directory:")
     for plot_name in [
-        'gradient_comparison.png',
-        'gradient_errors.png',
-        'function_values_and_critical_points.png',
-        'method_comparison_summary.png'
+        "gradient_comparison.png",
+        "gradient_errors.png",
+        "function_values_and_critical_points.png",
+        "method_comparison_summary.png",
     ]:
         print(f"  - {plot_name}")
 
@@ -992,9 +1323,19 @@ def compare_gradient_methods(plots_dir: str = "plots"):
     print("-" * 60)
     print("Method              | Mean Error | Std Error  | Max Error")
     print("-" * 60)
-    for method, errors in zip(methods, [finite_diff_errors, reinforce_errors,
-                                       reinforce_baseline_errors, gumbel_errors]):
-        print(f"{method:18} | {np.mean(errors):9.6f} | {np.std(errors):9.6f} | {np.max(errors):9.6f}")
+    for method, errors in zip(
+        methods,
+        [
+            finite_diff_errors,
+            reinforce_errors,
+            reinforce_baseline_errors,
+            gumbel_errors,
+        ],
+    ):
+        print(
+            f"{method:18} | {np.mean(errors):9.6f} | {np.std(errors):9.6f} | {np.max(errors):9.6f}"
+        )
+
 
 def demonstrate_gumbel_max_trick():
     """Demonstrate the Gumbel-Max trick in detail."""
@@ -1016,7 +1357,9 @@ def demonstrate_gumbel_max_trick():
 
     decisions = []
     for _ in range(n_trials):
-        decision = bernoulli_gumbel_max(np.array([data_point]), threshold, sharpness, rng)[0]
+        decision = bernoulli_gumbel_max(
+            np.array([data_point]), threshold, sharpness, rng
+        )[0]
         decisions.append(decision)
 
     empirical_prob = np.mean(decisions)
@@ -1033,6 +1376,7 @@ def demonstrate_gumbel_max_trick():
     print(f"\n✅ Gumbel-Max trick produces equivalent results to direct sampling!")
     print(f"🔑 But Gumbel-Max enables straight-through gradient estimation")
 
+
 def main():
     """Run all demonstrations."""
     print("🚀 Stochastic Threshold Cuts with Expectation Values")
@@ -1048,6 +1392,7 @@ def main():
     demonstrate_gumbel_max_trick()
     data, labels, threshold = compare_cut_methods()
     compare_gradient_methods("plots")
+
 
 if __name__ == "__main__":
     main()
