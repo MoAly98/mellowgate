@@ -17,12 +17,15 @@ Author: Generated for differentiable discrete decisions tutorial
 """
 
 from __future__ import annotations
-import numpy as np
-import matplotlib.pyplot as plt
-from typing import Optional, Tuple, Dict, List
-from dataclasses import dataclass
+
 import warnings
-warnings.filterwarnings('ignore')
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+warnings.filterwarnings("ignore")
 
 # Type alias for random generator
 RandomGenerator = np.random.Generator
@@ -34,7 +37,10 @@ np.random.seed(42)
 # Data generation utilities
 # -----------------------------
 
-def generate_physics_like_data(n_samples: int = 10000, signal_fraction: float = 0.3) -> Tuple[np.ndarray, np.ndarray]:
+
+def generate_physics_like_data(
+    n_samples: int = 10000, signal_fraction: float = 0.3
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Generate synthetic data resembling particle physics measurements.
 
@@ -71,6 +77,7 @@ def generate_physics_like_data(n_samples: int = 10000, signal_fraction: float = 
     indices = np.random.permutation(len(all_data))
     return all_data[indices], all_labels[indices]
 
+
 def generate_multimodal_data(n_samples: int = 8000) -> np.ndarray:
     """
     Generate more complex multimodal data for demonstration.
@@ -79,19 +86,22 @@ def generate_multimodal_data(n_samples: int = 8000) -> np.ndarray:
     how threshold cuts affect different populations.
     """
     # Three populations with different characteristics
-    pop1 = np.random.normal(loc=30, scale=8, size=n_samples//3)    # Low peak
-    pop2 = np.random.normal(loc=60, scale=12, size=n_samples//3)   # Middle peak
-    pop3 = np.random.normal(loc=90, scale=6, size=n_samples//3)    # High peak
+    pop1 = np.random.normal(loc=30, scale=8, size=n_samples // 3)  # Low peak
+    pop2 = np.random.normal(loc=60, scale=12, size=n_samples // 3)  # Middle peak
+    pop3 = np.random.normal(loc=90, scale=6, size=n_samples // 3)  # High peak
 
     return np.concatenate([pop1, pop2, pop3])
+
 
 # -----------------------------
 # Cut functions
 # -----------------------------
 
+
 def sigmoid(x: float) -> float:
     """Sigmoid function with numerical stability."""
     return 1.0 / (1.0 + np.exp(-np.clip(x, -500, 500)))
+
 
 def hard_cut(data: np.ndarray, threshold: float) -> np.ndarray:
     """
@@ -106,7 +116,10 @@ def hard_cut(data: np.ndarray, threshold: float) -> np.ndarray:
     """
     return (data >= threshold).astype(float)
 
-def soft_cut_probability(data: np.ndarray, threshold: float, sharpness: float = 1.0) -> np.ndarray:
+
+def soft_cut_probability(
+    data: np.ndarray, threshold: float, sharpness: float = 1.0
+) -> np.ndarray:
     """
     Compute soft cut probabilities using sigmoid function.
 
@@ -120,8 +133,13 @@ def soft_cut_probability(data: np.ndarray, threshold: float, sharpness: float = 
     """
     return 1.0 / (1.0 + np.exp(-sharpness * (data - threshold)))
 
-def stochastic_cut(data: np.ndarray, threshold: float, sharpness: float = 1.0,
-                  rng: Optional[RandomGenerator] = None) -> np.ndarray:
+
+def stochastic_cut(
+    data: np.ndarray,
+    threshold: float,
+    sharpness: float = 1.0,
+    rng: Optional[RandomGenerator] = None,
+) -> np.ndarray:
     """
     Apply stochastic cut based on soft probabilities.
 
@@ -141,11 +159,15 @@ def stochastic_cut(data: np.ndarray, threshold: float, sharpness: float = 1.0,
     probabilities = soft_cut_probability(data, threshold, sharpness)
     return (rng.random(len(data)) < probabilities).astype(float)
 
+
 # -----------------------------
 # Efficiency and loss functions
 # -----------------------------
 
-def compute_efficiency(selected: np.ndarray, true_labels: np.ndarray) -> Dict[str, float]:
+
+def compute_efficiency(
+    selected: np.ndarray, true_labels: np.ndarray
+) -> Dict[str, float]:
     """
     Compute signal efficiency and background rejection.
 
@@ -160,10 +182,18 @@ def compute_efficiency(selected: np.ndarray, true_labels: np.ndarray) -> Dict[st
     background_mask = true_labels == 0
 
     # Signal efficiency: fraction of signal events selected
-    signal_eff = np.sum(selected[signal_mask]) / np.sum(signal_mask) if np.sum(signal_mask) > 0 else 0
+    signal_eff = (
+        np.sum(selected[signal_mask]) / np.sum(signal_mask)
+        if np.sum(signal_mask) > 0
+        else 0
+    )
 
     # Background efficiency (we want this low): fraction of background selected
-    background_eff = np.sum(selected[background_mask]) / np.sum(background_mask) if np.sum(background_mask) > 0 else 0
+    background_eff = (
+        np.sum(selected[background_mask]) / np.sum(background_mask)
+        if np.sum(background_mask) > 0
+        else 0
+    )
 
     # Background rejection: 1 - background efficiency
     background_rej = 1 - background_eff
@@ -172,15 +202,21 @@ def compute_efficiency(selected: np.ndarray, true_labels: np.ndarray) -> Dict[st
     purity = np.sum(selected[signal_mask]) / np.sum(selected) if np.sum(selected) > 0 else 0  # type: ignore
 
     return {
-        'signal_efficiency': signal_eff,
-        'background_efficiency': background_eff,
-        'background_rejection': background_rej,
-        'purity': purity,
-        'n_selected': int(np.sum(selected))  # type: ignore
+        "signal_efficiency": signal_eff,
+        "background_efficiency": background_eff,
+        "background_rejection": background_rej,
+        "purity": purity,
+        "n_selected": int(np.sum(selected)),  # type: ignore
     }
 
-def loss_function(threshold: float, data: np.ndarray, true_labels: np.ndarray,
-                 sharpness: float = 1.0, signal_weight: float = 1.0) -> float:
+
+def loss_function(
+    threshold: float,
+    data: np.ndarray,
+    true_labels: np.ndarray,
+    sharpness: float = 1.0,
+    signal_weight: float = 1.0,
+) -> float:
     """
     Loss function for optimizing threshold parameter.
 
@@ -205,7 +241,9 @@ def loss_function(threshold: float, data: np.ndarray, true_labels: np.ndarray,
     background_mask = true_labels == 0
 
     signal_eff = np.mean(probs[signal_mask]) if np.sum(signal_mask) > 0 else 0
-    background_eff = np.mean(probs[background_mask]) if np.sum(background_mask) > 0 else 0
+    background_eff = (
+        np.mean(probs[background_mask]) if np.sum(background_mask) > 0 else 0
+    )
 
     # Loss: we want high signal efficiency and low background efficiency
     # This is a simple example - in practice you might use more sophisticated metrics
@@ -213,20 +251,37 @@ def loss_function(threshold: float, data: np.ndarray, true_labels: np.ndarray,
 
     return loss
 
+
 # -----------------------------
 # Gradient estimation
 # -----------------------------
 
-def finite_difference_gradient(threshold: float, data: np.ndarray, true_labels: np.ndarray,
-                             sharpness: float = 1.0, signal_weight: float = 1.0,
-                             delta: float = 0.1) -> float:
+
+def finite_difference_gradient(
+    threshold: float,
+    data: np.ndarray,
+    true_labels: np.ndarray,
+    sharpness: float = 1.0,
+    signal_weight: float = 1.0,
+    delta: float = 0.1,
+) -> float:
     """Finite difference gradient of the loss function."""
-    loss_plus = loss_function(threshold + delta, data, true_labels, sharpness, signal_weight)
-    loss_minus = loss_function(threshold - delta, data, true_labels, sharpness, signal_weight)
+    loss_plus = loss_function(
+        threshold + delta, data, true_labels, sharpness, signal_weight
+    )
+    loss_minus = loss_function(
+        threshold - delta, data, true_labels, sharpness, signal_weight
+    )
     return (loss_plus - loss_minus) / (2 * delta)
 
-def analytical_gradient(threshold: float, data: np.ndarray, true_labels: np.ndarray,
-                       sharpness: float = 1.0, signal_weight: float = 1.0) -> float:
+
+def analytical_gradient(
+    threshold: float,
+    data: np.ndarray,
+    true_labels: np.ndarray,
+    sharpness: float = 1.0,
+    signal_weight: float = 1.0,
+) -> float:
     """
     Analytical gradient of the loss function.
 
@@ -248,20 +303,28 @@ def analytical_gradient(threshold: float, data: np.ndarray, true_labels: np.ndar
     signal_grad = np.mean(dprobs_dtheta[signal_mask]) if np.sum(signal_mask) > 0 else 0
 
     # d/dθ E[p | background]
-    background_grad = np.mean(dprobs_dtheta[background_mask]) if np.sum(background_mask) > 0 else 0
+    background_grad = (
+        np.mean(dprobs_dtheta[background_mask]) if np.sum(background_mask) > 0 else 0
+    )
 
     # Total gradient
     grad = -signal_weight * signal_grad + (1 - signal_weight) * background_grad
 
     return grad
 
+
 # -----------------------------
 # Visualization functions
 # -----------------------------
 
-def plot_data_and_cuts(data: np.ndarray, true_labels: Optional[np.ndarray] = None,
-                      threshold: float = 60.0, sharpness: float = 1.0,
-                      n_stochastic_samples: int = 3) -> None:
+
+def plot_data_and_cuts(
+    data: np.ndarray,
+    true_labels: Optional[np.ndarray] = None,
+    threshold: float = 60.0,
+    sharpness: float = 1.0,
+    n_stochastic_samples: int = 3,
+) -> None:
     """
     Visualize the data and different types of cuts.
 
@@ -285,16 +348,31 @@ def plot_data_and_cuts(data: np.ndarray, true_labels: Optional[np.ndarray] = Non
         signal_data = data[true_labels == 1]
         background_data = data[true_labels == 0]
 
-        ax1.hist(background_data, bins=50, alpha=0.7, label='Background', color='red', density=True)
-        ax1.hist(signal_data, bins=50, alpha=0.7, label='Signal', color='blue', density=True)
+        ax1.hist(
+            background_data,
+            bins=50,
+            alpha=0.7,
+            label="Background",
+            color="red",
+            density=True,
+        )
+        ax1.hist(
+            signal_data, bins=50, alpha=0.7, label="Signal", color="blue", density=True
+        )
         ax1.legend()
     else:
-        ax1.hist(data, bins=50, alpha=0.7, color='gray', density=True)
+        ax1.hist(data, bins=50, alpha=0.7, color="gray", density=True)
 
-    ax1.axvline(threshold, color='black', linestyle='--', linewidth=2, label=f'Threshold = {threshold}')
-    ax1.set_title('Original Data Distribution')
-    ax1.set_xlabel('Variable Value')
-    ax1.set_ylabel('Density')
+    ax1.axvline(
+        threshold,
+        color="black",
+        linestyle="--",
+        linewidth=2,
+        label=f"Threshold = {threshold}",
+    )
+    ax1.set_title("Original Data Distribution")
+    ax1.set_xlabel("Variable Value")
+    ax1.set_ylabel("Density")
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
@@ -303,16 +381,23 @@ def plot_data_and_cuts(data: np.ndarray, true_labels: Optional[np.ndarray] = Non
 
     # Hard cut
     hard_cut_vals = (x_range >= threshold).astype(float)
-    ax2.plot(x_range, hard_cut_vals, 'r-', linewidth=3, label='Hard Cut', alpha=0.8)
+    ax2.plot(x_range, hard_cut_vals, "r-", linewidth=3, label="Hard Cut", alpha=0.8)
 
     # Soft cut probability
     soft_probs = soft_cut_probability(x_range, threshold, sharpness)
-    ax2.plot(x_range, soft_probs, 'b-', linewidth=3, label=f'Soft Cut (β={sharpness})', alpha=0.8)
+    ax2.plot(
+        x_range,
+        soft_probs,
+        "b-",
+        linewidth=3,
+        label=f"Soft Cut (β={sharpness})",
+        alpha=0.8,
+    )
 
-    ax2.axvline(threshold, color='black', linestyle='--', alpha=0.7)
-    ax2.set_title('Cut Functions Comparison')
-    ax2.set_xlabel('Variable Value')
-    ax2.set_ylabel('Selection Probability')
+    ax2.axvline(threshold, color="black", linestyle="--", alpha=0.7)
+    ax2.set_title("Cut Functions Comparison")
+    ax2.set_xlabel("Variable Value")
+    ax2.set_ylabel("Selection Probability")
     ax2.legend()
     ax2.grid(True, alpha=0.3)
     ax2.set_ylim(-0.05, 1.05)
@@ -323,40 +408,56 @@ def plot_data_and_cuts(data: np.ndarray, true_labels: Optional[np.ndarray] = Non
     selected_data = data[hard_selected == 1]
     rejected_data = data[hard_selected == 0]
 
-    ax3.hist(rejected_data, bins=50, alpha=0.7, label='Rejected', color='red', density=True)
-    ax3.hist(selected_data, bins=50, alpha=0.7, label='Selected', color='green', density=True)
-    ax3.axvline(threshold, color='black', linestyle='--', linewidth=2)
-    ax3.set_title(f'Hard Cut Result (Selected: {len(selected_data)}/{len(data)})')
-    ax3.set_xlabel('Variable Value')
-    ax3.set_ylabel('Density')
+    ax3.hist(
+        rejected_data, bins=50, alpha=0.7, label="Rejected", color="red", density=True
+    )
+    ax3.hist(
+        selected_data, bins=50, alpha=0.7, label="Selected", color="green", density=True
+    )
+    ax3.axvline(threshold, color="black", linestyle="--", linewidth=2)
+    ax3.set_title(f"Hard Cut Result (Selected: {len(selected_data)}/{len(data)})")
+    ax3.set_xlabel("Variable Value")
+    ax3.set_ylabel("Density")
     ax3.legend()
     ax3.grid(True, alpha=0.3)
 
     # Plot 4: Multiple stochastic cut samples
     ax4 = axes[1, 1]
-    colors = ['green', 'orange', 'purple']
+    colors = ["green", "orange", "purple"]
 
     for i in range(min(n_stochastic_samples, len(colors))):
         rng = np.random.default_rng(i + 42)  # Different seed for each sample
         stoch_selected = stochastic_cut(data, threshold, sharpness, rng)
         selected_data_stoch = data[stoch_selected == 1]
 
-        ax4.hist(selected_data_stoch, bins=30, alpha=0.5,
-                label=f'Stochastic Sample {i+1} ({len(selected_data_stoch)} events)',
-                color=colors[i], density=True)
+        ax4.hist(
+            selected_data_stoch,
+            bins=30,
+            alpha=0.5,
+            label=f"Stochastic Sample {i+1} ({len(selected_data_stoch)} events)",
+            color=colors[i],
+            density=True,
+        )
 
-    ax4.axvline(threshold, color='black', linestyle='--', linewidth=2, label='Threshold')
-    ax4.set_title('Stochastic Cut Samples')
-    ax4.set_xlabel('Variable Value')
-    ax4.set_ylabel('Density')
+    ax4.axvline(
+        threshold, color="black", linestyle="--", linewidth=2, label="Threshold"
+    )
+    ax4.set_title("Stochastic Cut Samples")
+    ax4.set_xlabel("Variable Value")
+    ax4.set_ylabel("Density")
     ax4.legend()
     ax4.grid(True, alpha=0.3)
 
     plt.tight_layout()
     plt.show()
 
-def plot_cut_optimization(data: np.ndarray, true_labels: np.ndarray,
-                         sharpness: float = 1.0, signal_weight: float = 0.7) -> tuple[float, float]:
+
+def plot_cut_optimization(
+    data: np.ndarray,
+    true_labels: np.ndarray,
+    sharpness: float = 1.0,
+    signal_weight: float = 0.7,
+) -> tuple[float, float]:
     """
     Visualize the optimization of threshold parameter.
 
@@ -367,7 +468,10 @@ def plot_cut_optimization(data: np.ndarray, true_labels: np.ndarray,
     thresholds = np.linspace(data.min(), data.max(), 100)
 
     # Compute loss for each threshold
-    losses = [loss_function(t, data, true_labels, sharpness, signal_weight) for t in thresholds]
+    losses = [
+        loss_function(t, data, true_labels, sharpness, signal_weight)
+        for t in thresholds
+    ]
 
     # Find optimal threshold
     optimal_idx = np.argmin(losses)
@@ -375,33 +479,54 @@ def plot_cut_optimization(data: np.ndarray, true_labels: np.ndarray,
 
     # Compute gradients at various points
     grad_thresholds = thresholds[::10]  # Subsample for clarity
-    analytical_grads = [analytical_gradient(t, data, true_labels, sharpness, signal_weight)
-                       for t in grad_thresholds]
-    finite_diff_grads = [finite_difference_gradient(t, data, true_labels, sharpness, signal_weight)
-                        for t in grad_thresholds]
+    analytical_grads = [
+        analytical_gradient(t, data, true_labels, sharpness, signal_weight)
+        for t in grad_thresholds
+    ]
+    finite_diff_grads = [
+        finite_difference_gradient(t, data, true_labels, sharpness, signal_weight)
+        for t in grad_thresholds
+    ]
 
     # Create visualization
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
 
     # Plot 1: Loss function
-    ax1.plot(thresholds, losses, 'b-', linewidth=2, label='Loss Function')
-    ax1.axvline(optimal_threshold, color='red', linestyle='--', linewidth=2,
-               label=f'Optimal Threshold = {optimal_threshold:.1f}')
-    ax1.scatter(optimal_threshold, losses[optimal_idx], color='red', s=100, zorder=5)
-    ax1.set_xlabel('Threshold')
-    ax1.set_ylabel('Loss')
-    ax1.set_title('Loss Function vs Threshold')
+    ax1.plot(thresholds, losses, "b-", linewidth=2, label="Loss Function")
+    ax1.axvline(
+        optimal_threshold,
+        color="red",
+        linestyle="--",
+        linewidth=2,
+        label=f"Optimal Threshold = {optimal_threshold:.1f}",
+    )
+    ax1.scatter(optimal_threshold, losses[optimal_idx], color="red", s=100, zorder=5)
+    ax1.set_xlabel("Threshold")
+    ax1.set_ylabel("Loss")
+    ax1.set_title("Loss Function vs Threshold")
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
     # Plot 2: Gradient comparison
-    ax2.plot(grad_thresholds, analytical_grads, 'bo-', label='Analytical Gradient', markersize=6)
-    ax2.plot(grad_thresholds, finite_diff_grads, 'r^-', label='Finite Difference', markersize=6)
-    ax2.axhline(0, color='black', linestyle=':', alpha=0.7)
-    ax2.axvline(optimal_threshold, color='red', linestyle='--', alpha=0.7)
-    ax2.set_xlabel('Threshold')
-    ax2.set_ylabel('Gradient')
-    ax2.set_title('Gradient Estimates')
+    ax2.plot(
+        grad_thresholds,
+        analytical_grads,
+        "bo-",
+        label="Analytical Gradient",
+        markersize=6,
+    )
+    ax2.plot(
+        grad_thresholds,
+        finite_diff_grads,
+        "r^-",
+        label="Finite Difference",
+        markersize=6,
+    )
+    ax2.axhline(0, color="black", linestyle=":", alpha=0.7)
+    ax2.axvline(optimal_threshold, color="red", linestyle="--", alpha=0.7)
+    ax2.set_xlabel("Threshold")
+    ax2.set_ylabel("Gradient")
+    ax2.set_title("Gradient Estimates")
     ax2.legend()
     ax2.grid(True, alpha=0.3)
 
@@ -420,17 +545,23 @@ def plot_cut_optimization(data: np.ndarray, true_labels: np.ndarray,
         signal_effs.append(sig_eff)
         background_effs.append(bkg_eff)
 
-    ax3.plot(background_effs, signal_effs, 'g-', linewidth=2, label='Soft Cut')
+    ax3.plot(background_effs, signal_effs, "g-", linewidth=2, label="Soft Cut")
 
     # Mark optimal point
     opt_sig_eff = signal_effs[optimal_idx]
     opt_bkg_eff = background_effs[optimal_idx]
-    ax3.scatter(opt_bkg_eff, opt_sig_eff, color='red', s=100, zorder=5,
-               label=f'Optimal (BGE={opt_bkg_eff:.3f}, SGE={opt_sig_eff:.3f})')
+    ax3.scatter(
+        opt_bkg_eff,
+        opt_sig_eff,
+        color="red",
+        s=100,
+        zorder=5,
+        label=f"Optimal (BGE={opt_bkg_eff:.3f}, SGE={opt_sig_eff:.3f})",
+    )
 
-    ax3.set_xlabel('Background Efficiency')
-    ax3.set_ylabel('Signal Efficiency')
-    ax3.set_title('Signal vs Background Efficiency')
+    ax3.set_xlabel("Background Efficiency")
+    ax3.set_ylabel("Signal Efficiency")
+    ax3.set_title("Signal vs Background Efficiency")
     ax3.legend()
     ax3.grid(True, alpha=0.3)
     ax3.set_xlim(0, 1)
@@ -438,29 +569,43 @@ def plot_cut_optimization(data: np.ndarray, true_labels: np.ndarray,
 
     # Plot 4: Efficiency metrics at optimal threshold
     metrics = compute_efficiency(
-        soft_cut_probability(data, optimal_threshold, sharpness) > 0.5,
-        true_labels
+        soft_cut_probability(data, optimal_threshold, sharpness) > 0.5, true_labels
     )
 
-    metric_names = ['Signal\nEfficiency', 'Background\nRejection', 'Purity']
-    metric_values = [metrics['signal_efficiency'], metrics['background_rejection'], metrics['purity']]
+    metric_names = ["Signal\nEfficiency", "Background\nRejection", "Purity"]
+    metric_values = [
+        metrics["signal_efficiency"],
+        metrics["background_rejection"],
+        metrics["purity"],
+    ]
 
-    bars = ax4.bar(metric_names, metric_values, color=['blue', 'red', 'green'], alpha=0.7)
-    ax4.set_ylabel('Value')
-    ax4.set_title(f'Performance Metrics at Optimal Threshold\n({metrics["n_selected"]} events selected)')
+    bars = ax4.bar(
+        metric_names, metric_values, color=["blue", "red", "green"], alpha=0.7
+    )
+    ax4.set_ylabel("Value")
+    ax4.set_title(
+        f'Performance Metrics at Optimal Threshold\n({metrics["n_selected"]} events selected)'
+    )
     ax4.set_ylim(0, 1)
     ax4.grid(True, alpha=0.3)
 
     # Add value labels on bars
     for bar, value in zip(bars, metric_values):
         height = bar.get_height()
-        ax4.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
+        ax4.text(
+            bar.get_x() + bar.get_width() / 2.0,
+            height + 0.01,
+            f"{value:.3f}",
+            ha="center",
+            va="bottom",
+            fontweight="bold",
+        )
 
     plt.tight_layout()
     plt.show()
 
     return optimal_threshold, losses[optimal_idx]
+
 
 def compare_sharpness_effects(data: np.ndarray, threshold: float = 60.0) -> None:
     """
@@ -475,12 +620,12 @@ def compare_sharpness_effects(data: np.ndarray, threshold: float = 60.0) -> None
     plt.subplot(2, 2, 1)
     for sharpness in sharpness_values:
         probs = soft_cut_probability(x_range, threshold, sharpness)
-        plt.plot(x_range, probs, linewidth=2, label=f'β = {sharpness}')
+        plt.plot(x_range, probs, linewidth=2, label=f"β = {sharpness}")
 
-    plt.axvline(threshold, color='black', linestyle='--', alpha=0.7, label='Threshold')
-    plt.xlabel('Variable Value')
-    plt.ylabel('Selection Probability')
-    plt.title('Soft Cut Probability vs Sharpness')
+    plt.axvline(threshold, color="black", linestyle="--", alpha=0.7, label="Threshold")
+    plt.xlabel("Variable Value")
+    plt.ylabel("Selection Probability")
+    plt.title("Soft Cut Probability vs Sharpness")
     plt.legend()
     plt.grid(True, alpha=0.3)
 
@@ -491,13 +636,18 @@ def compare_sharpness_effects(data: np.ndarray, threshold: float = 60.0) -> None
     for i, sharpness in enumerate([0.5, 1.0, 2.0]):
         selected = stochastic_cut(data, threshold, sharpness, rng)
         selected_data = data[selected == 1]
-        plt.hist(selected_data, bins=30, alpha=0.6, label=f'β = {sharpness} ({len(selected_data)} events)',
-                density=True)
+        plt.hist(
+            selected_data,
+            bins=30,
+            alpha=0.6,
+            label=f"β = {sharpness} ({len(selected_data)} events)",
+            density=True,
+        )
 
-    plt.axvline(threshold, color='black', linestyle='--', alpha=0.7)
-    plt.xlabel('Variable Value')
-    plt.ylabel('Density')
-    plt.title('Selected Events vs Sharpness')
+    plt.axvline(threshold, color="black", linestyle="--", alpha=0.7)
+    plt.xlabel("Variable Value")
+    plt.ylabel("Density")
+    plt.title("Selected Events vs Sharpness")
     plt.legend()
     plt.grid(True, alpha=0.3)
 
@@ -509,13 +659,15 @@ def compare_sharpness_effects(data: np.ndarray, threshold: float = 60.0) -> None
 
         gradients = []
         for sharpness in np.linspace(0.1, 5.0, 50):
-            grad = abs(analytical_gradient(threshold, sample_data, sample_labels, sharpness))
+            grad = abs(
+                analytical_gradient(threshold, sample_data, sample_labels, sharpness)
+            )
             gradients.append(grad)
 
-        plt.plot(np.linspace(0.1, 5.0, 50), gradients, 'b-', linewidth=2)
-        plt.xlabel('Sharpness (β)')
-        plt.ylabel('|Gradient|')
-        plt.title('Gradient Magnitude vs Sharpness')
+        plt.plot(np.linspace(0.1, 5.0, 50), gradients, "b-", linewidth=2)
+        plt.xlabel("Sharpness (β)")
+        plt.ylabel("|Gradient|")
+        plt.title("Gradient Magnitude vs Sharpness")
         plt.grid(True, alpha=0.3)
 
     # Plot transition width vs sharpness
@@ -528,19 +680,21 @@ def compare_sharpness_effects(data: np.ndarray, threshold: float = 60.0) -> None
         width = prob_09 - prob_01
         transition_widths.append(width)
 
-    plt.plot(sharpness_values, transition_widths, 'ro-', linewidth=2, markersize=8)
-    plt.xlabel('Sharpness (β)')
-    plt.ylabel('Transition Width (0.1 → 0.9)')
-    plt.title('Cut Transition Width vs Sharpness')
+    plt.plot(sharpness_values, transition_widths, "ro-", linewidth=2, markersize=8)
+    plt.xlabel("Sharpness (β)")
+    plt.ylabel("Transition Width (0.1 → 0.9)")
+    plt.title("Cut Transition Width vs Sharpness")
     plt.grid(True, alpha=0.3)
-    plt.yscale('log')
+    plt.yscale("log")
 
     plt.tight_layout()
     plt.show()
 
+
 # -----------------------------
 # Main demonstration functions
 # -----------------------------
+
 
 def demo_basic_cuts():
     """Demonstrate basic hard vs soft vs stochastic cuts."""
@@ -564,7 +718,9 @@ def demo_basic_cuts():
     # Apply different types of cuts
     hard_selected = hard_cut(data, threshold)
     soft_probs = soft_cut_probability(data, threshold, sharpness)
-    stoch_selected = stochastic_cut(data, threshold, sharpness, np.random.default_rng(42))
+    stoch_selected = stochastic_cut(
+        data, threshold, sharpness, np.random.default_rng(42)
+    )
 
     # Compute and display metrics
     hard_metrics = compute_efficiency(hard_selected, labels)
@@ -575,14 +731,21 @@ def demo_basic_cuts():
     print("-" * 60)
     print("Cut Type        | Signal Eff | Bkg Rej | Purity | N Selected")
     print("-" * 60)
-    print(f"Hard Cut        | {hard_metrics['signal_efficiency']:.3f}      | {hard_metrics['background_rejection']:.3f}   | {hard_metrics['purity']:.3f}  | {hard_metrics['n_selected']}")
-    print(f"Soft Cut (p>0.5)| {soft_metrics['signal_efficiency']:.3f}      | {soft_metrics['background_rejection']:.3f}   | {soft_metrics['purity']:.3f}  | {soft_metrics['n_selected']}")
-    print(f"Stochastic Cut  | {stoch_metrics['signal_efficiency']:.3f}      | {stoch_metrics['background_rejection']:.3f}   | {stoch_metrics['purity']:.3f}  | {stoch_metrics['n_selected']}")
+    print(
+        f"Hard Cut        | {hard_metrics['signal_efficiency']:.3f}      | {hard_metrics['background_rejection']:.3f}   | {hard_metrics['purity']:.3f}  | {hard_metrics['n_selected']}"
+    )
+    print(
+        f"Soft Cut (p>0.5)| {soft_metrics['signal_efficiency']:.3f}      | {soft_metrics['background_rejection']:.3f}   | {soft_metrics['purity']:.3f}  | {soft_metrics['n_selected']}"
+    )
+    print(
+        f"Stochastic Cut  | {stoch_metrics['signal_efficiency']:.3f}      | {stoch_metrics['background_rejection']:.3f}   | {stoch_metrics['purity']:.3f}  | {stoch_metrics['n_selected']}"
+    )
 
     # Visualize results
     plot_data_and_cuts(data, labels, threshold, sharpness)
 
     return data, labels, threshold
+
 
 def demo_cut_optimization():
     """Demonstrate gradient-based optimization of threshold parameter."""
@@ -601,7 +764,9 @@ def demo_cut_optimization():
     print(f"  • Background weight = {1 - signal_weight}")
 
     # Find optimal threshold
-    optimal_threshold, optimal_loss = plot_cut_optimization(data, labels, sharpness, signal_weight)
+    optimal_threshold, optimal_loss = plot_cut_optimization(
+        data, labels, sharpness, signal_weight
+    )
 
     print(f"\n🎯 Optimization Results:")
     print(f"  • Optimal threshold: {optimal_threshold:.2f}")
@@ -616,6 +781,7 @@ def demo_cut_optimization():
     print(f"  • Improvement: {((naive_loss - optimal_loss) / naive_loss * 100):.1f}%")
 
     return optimal_threshold
+
 
 def demo_sharpness_effects():
     """Demonstrate the effect of sharpness parameter."""
@@ -638,6 +804,7 @@ def demo_sharpness_effects():
     print("  • Higher β → larger gradients (faster optimization)")
     print("  • Lower β → more exploration, less exploitation")
 
+
 def main():
     """Run all demonstrations."""
     print("🚀 Stochastic Threshold Cuts Demonstration")
@@ -650,6 +817,7 @@ def main():
     data, labels, threshold = demo_basic_cuts()
     optimal_threshold = demo_cut_optimization()
     demo_sharpness_effects()
+
 
 if __name__ == "__main__":
     main()
