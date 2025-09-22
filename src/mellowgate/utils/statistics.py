@@ -4,8 +4,9 @@ This module provides statistical sampling functions used in gradient estimation
 algorithms, particularly for generating random variates from various distributions.
 """
 
-import numpy as np
 from typing import Tuple, Union
+
+import numpy as np
 
 ShapeType = Union[int, Tuple[int, ...]]
 

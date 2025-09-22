@@ -1,13 +1,13 @@
 """API module for mellowgate discrete optimization functions."""
 
-from .functions import DiscreteProblem, Branch, LogitsModel
 from .estimators import (
-    finite_difference_gradient,
     FiniteDifferenceConfig,
-    reinforce_gradient,
+    GumbelSoftmaxConfig,
     ReinforceConfig,
     ReinforceState,
+    finite_difference_gradient,
     gumbel_softmax_gradient,
-    GumbelSoftmaxConfig,
+    reinforce_gradient,
 )
-from .experiments import run_parameter_sweep, Sweep
+from .experiments import Sweep, run_parameter_sweep
+from .functions import Branch, DiscreteProblem, LogitsModel

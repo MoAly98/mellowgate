@@ -7,15 +7,17 @@ and timing information for performance analysis.
 
 import time
 from dataclasses import dataclass
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 import numpy as np
-from mellowgate.api.functions import DiscreteProblem
+
 from mellowgate.api.estimators import (
-    finite_difference_gradient,
-    reinforce_gradient,
     ReinforceState,
+    finite_difference_gradient,
     gumbel_softmax_gradient,
+    reinforce_gradient,
 )
+from mellowgate.api.functions import DiscreteProblem
 from mellowgate.logging import logger
 
 ArrayType = np.ndarray

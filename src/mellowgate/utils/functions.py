@@ -4,8 +4,9 @@ This module provides mathematical utility functions commonly used throughout
 the mellowgate library, particularly for discrete optimization problems.
 """
 
-import numpy as np
 from typing import Union
+
+import numpy as np
 
 ArrayLike = Union[np.ndarray, list, tuple]
 

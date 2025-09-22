@@ -6,12 +6,13 @@ including finite differences, REINFORCE, and Gumbel-Softmax approaches. These me
 enable differentiable optimization of discrete choices through stochastic relaxations.
 """
 
-import numpy as np
 from dataclasses import dataclass
 
-from mellowgate.utils.statistics import sample_gumbel
+import numpy as np
+
 from mellowgate.api.functions import DiscreteProblem
 from mellowgate.utils.functions import softmax
+from mellowgate.utils.statistics import sample_gumbel
 
 
 @dataclass

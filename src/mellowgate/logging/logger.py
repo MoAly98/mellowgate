@@ -5,9 +5,10 @@ providing beautiful console output with syntax highlighting and traceback
 formatting for enhanced debugging experience.
 """
 
+import logging
+
 from rich.console import Console
 from rich.logging import RichHandler
-import logging
 
 # Initialize rich console for beautiful output formatting
 console = Console()

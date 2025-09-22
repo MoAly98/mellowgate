@@ -5,24 +5,25 @@ problems using various stochastic gradient estimators including finite differenc
 REINFORCE, and Gumbel-Softmax.
 """
 
-# Expose main API classes and functions
-from .api.functions import DiscreteProblem, Branch, LogitsModel
 from .api.estimators import (
-    finite_difference_gradient,
     FiniteDifferenceConfig,
-    reinforce_gradient,
+    GumbelSoftmaxConfig,
     ReinforceConfig,
     ReinforceState,
+    finite_difference_gradient,
     gumbel_softmax_gradient,
-    GumbelSoftmaxConfig,
+    reinforce_gradient,
 )
-from .api.experiments import run_parameter_sweep, Sweep
+from .api.experiments import Sweep, run_parameter_sweep
+
+# Expose main API classes and functions
+from .api.functions import Branch, DiscreteProblem, LogitsModel
 
 # Expose plotting utilities
 from .plots.metrics import (
-    plot_gradient_estimates_vs_truth,
     plot_bias_variance_mse_analysis,
     plot_computational_time_analysis,
+    plot_gradient_estimates_vs_truth,
 )
 
 # Expose utility functions

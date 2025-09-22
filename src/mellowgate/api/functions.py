@@ -7,7 +7,9 @@ with exact gradient computation capabilities.
 
 from dataclasses import dataclass
 from typing import Callable, List, Optional
+
 import numpy as np
+
 from mellowgate.utils.functions import softmax
 
 

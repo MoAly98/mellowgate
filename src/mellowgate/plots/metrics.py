@@ -5,9 +5,11 @@ performance of different gradient estimation methods, including accuracy
 comparisons, bias-variance decomposition, and timing analysis.
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
 from typing import Callable, Dict, Optional
+
+import matplotlib.pyplot as plt
+import numpy as np
+
 from mellowgate.logging import logger
 from mellowgate.utils.outputs import OutputManager
 

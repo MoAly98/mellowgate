@@ -1,18 +1,19 @@
 # example_toy.py
 import numpy as np
-from mellowgate.api.functions import Branch, LogitsModel, DiscreteProblem
+
 from mellowgate.api.estimators import (
     FiniteDifferenceConfig,
+    GumbelSoftmaxConfig,
     ReinforceConfig,
     ReinforceState,
-    GumbelSoftmaxConfig,
-)
-from mellowgate.plots.metrics import (
-    plot_gradient_estimates_vs_truth,
-    plot_bias_variance_mse_analysis,
-    plot_computational_time_analysis,
 )
 from mellowgate.api.experiments import Sweep, run_parameter_sweep
+from mellowgate.api.functions import Branch, DiscreteProblem, LogitsModel
+from mellowgate.plots.metrics import (
+    plot_bias_variance_mse_analysis,
+    plot_computational_time_analysis,
+    plot_gradient_estimates_vs_truth,
+)
 from mellowgate.utils.outputs import OutputManager
 
 # Initialise output manager for this script
