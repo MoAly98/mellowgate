@@ -53,12 +53,12 @@ make clean         # Clean up build artifacts
 
 ### Code Quality Standards
 
-This project enforces strict code quality standards:
+This project enforces code quality standards:
 
 - **Formatting**: [Black](https://black.readthedocs.io/) (88 character line length)
 - **Import Sorting**: [isort](https://pycqa.github.io/isort/) (black-compatible profile)
 - **Linting**: [flake8](https://flake8.pycqa.org/) with strict rules
-- **Type Checking**: [MyPy](https://mypy.readthedocs.io/) (disabled by default, ready to enable)
+<!-- - **Type Checking**: [MyPy](https://mypy.readthedocs.io/) (disabled by default, ready to enable) -->
 
 ### Pre-commit Hooks
 
@@ -173,36 +173,134 @@ mellowgate/
    - Add clear description of changes
    - Reference any related issues
 
-### Performance Considerations
-
-- Use NumPy arrays for numerical computations
-- Prefer vectorized operations over loops
-- Profile code for performance bottlenecks when needed
-- Consider memory usage for large-scale experiments
 
 ## Example Usage
-
-```python
-import numpy as np
-from mellowgate.api.functions import DiscreteProblem, LogitsModel
-from mellowgate.api.estimators import (
-    finite_difference_gradient,
-    reinforce_gradient,
-    gumbel_softmax_gradient,
-    FiniteDifferenceConfig,
-    ReinforceConfig,
-    GumbelSoftmaxConfig,
-    ReinforceState
-)
-
-# Define your discrete optimization problem
-# See example.py for a complete working example
-```
 
 For a complete working example, run:
 ```bash
 make example
 ```
+
+## mellowgate API Overview
+
+The `mellowgate` library provides a Python API for gradient estimation in discrete optimization problems. Below is a brief explanation of the API, supplemented with mathematical formulations.
+
+### Core Concepts
+
+1. **Discrete Problem Definition**:
+   - A discrete optimization problem is defined using the `DiscreteProblem` class, which combines:
+     - A set of branches, each with a function $f_i(\theta)$ and its derivative $f_i'(\theta)$.
+     - A logits model that defines the logits $\alpha(\theta)$ and their derivatives $\alpha'(\theta)$.
+
+   ```python
+   from mellowgate.api.functions import DiscreteProblem, Branch, LogitsModel
+
+   branches = [
+       Branch(
+           function=lambda th: float(np.cos(th)),
+           derivative_function=lambda th: float(-np.sin(th)),
+       ),
+       Branch(
+           function=lambda th: float(np.sin(th)),
+           derivative_function=lambda th: float(np.cos(th)),
+       )
+   ]
+
+   logits_model = LogitsModel(
+       logits_function=lambda th: alpha * th,
+       logits_derivative_function=lambda th: alpha
+   )
+
+   problem = DiscreteProblem(branches=branches, logits_model=logits_model)
+   ```
+
+2. **Mathematical Formulation**:
+   - The library is designed to solve discrete optimization problems by estimating gradients through stochastic relaxations. Below is the mathematical formulation:
+
+     - **Discrete Optimization Problem**:
+       Given a parameter $\theta$, the goal is to optimize the expected value of a function $f(x; \theta)$ over discrete choices $x \in \{x_1, x_2, \dots, x_N\}$:
+       $$
+       \mathbb{E}[f(x; \theta)] = \sum_{i=1}^N \pi(x_i | \theta) f(x_i; \theta),
+       $$
+       where $\pi(x_i | \theta)$ is the probability of selecting $x_i$.
+
+     - **Logits and Softmax**:
+       The probabilities $\pi(x_i | \theta)$ are modeled using a softmax function over logits $\alpha_i(\theta)$:
+       $$
+       \pi(x_i | \theta) = \frac{\exp(\alpha_i(\theta))}{\sum_{j=1}^N \exp(\alpha_j(\theta))}.
+       $$
+
+     - **Gradient Estimation**:
+       The gradient of the objective with respect to $\theta` is:
+       $$
+       \nabla_\theta \mathbb{E}[f(x; \theta)] = \sum_{i=1}^N \nabla_\theta \pi(x_i | \theta) f(x_i; \theta) + \pi(x_i | \theta) \nabla_\theta f(x_i; \theta).
+       $$
+
+3. **Gradient Estimation Methods**:
+   - The library supports multiple gradient estimation methods:
+     - **Finite Differences**: Approximates the gradient using central differences:
+       $$
+       \nabla_\theta \mathbb{E}[f(\theta)] \approx \frac{f(\theta + \epsilon) - f(\theta - \epsilon)}{2\epsilon}
+       $$
+     - **REINFORCE**: Uses the score function estimator:
+       $$
+       \nabla_\theta \mathbb{E}[f(\theta)] \approx \mathbb{E}[(f(x) - b) \nabla_\theta \log \pi(x|\theta)]
+       $$
+     - **Gumbel-Softmax**: Provides a differentiable relaxation using the Gumbel distribution:
+       $$
+       \nabla_\theta \mathbb{E}[f(\theta)] \approx \mathbb{E}[f(x) \nabla_\theta \pi(x|\theta)]
+       $$
+
+   ```python
+   from mellowgate.api.estimators import FiniteDifferenceConfig, ReinforceConfig, GumbelSoftmaxConfig
+
+   fd_config = FiniteDifferenceConfig(step_size=1e-3, num_samples=20000)
+   reinforce_config = ReinforceConfig(num_samples=20000, use_baseline=True)
+   gs_config = GumbelSoftmaxConfig(temperature=0.5, num_samples=800)
+   ```
+
+4. **Running Experiments**:
+   - Use the `run_parameter_sweep` function to evaluate gradient estimators over a range of parameter values.
+
+   ```python
+   from mellowgate.api.experiments import Sweep, run_parameter_sweep
+
+   sweep = Sweep(
+       theta_values=np.linspace(-2.5, 2.5, 21),
+       num_repetitions=1000,
+       estimator_configs={
+           "fd": {"cfg": fd_config},
+           "reinforce": {"cfg": reinforce_config},
+           "gs": {"cfg": gs_config},
+       },
+   )
+
+   results = run_parameter_sweep(problem, sweep)
+   ```
+
+5. **Visualization**:
+   - The library provides utilities for visualizing gradient estimates, bias-variance trade-offs, and computational time.
+
+   ```python
+   from mellowgate.plots.metrics import (
+       plot_gradient_estimates_vs_truth,
+       plot_bias_variance_mse_analysis,
+       plot_computational_time_analysis,
+   )
+
+   plot_gradient_estimates_vs_truth(results, problem.compute_exact_gradient)
+   plot_bias_variance_mse_analysis(results, problem.compute_exact_gradient)
+   plot_computational_time_analysis(results)
+   ```
+
+### Example Workflow
+
+1. Define the discrete problem.
+2. Configure gradient estimators.
+3. Run experiments over a range of parameters.
+4. Visualize the results.
+
+For a complete example, see `example.py` in the repository.
 
 ## Contributing
 
