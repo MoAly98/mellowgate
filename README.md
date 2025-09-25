@@ -191,10 +191,13 @@ The `mellowgate` library provides a Python API for gradient estimation in discre
    - A discrete optimization problem is defined using the `DiscreteProblem` class, which combines:
      - A set of branches, each with a function $f_i(\theta)$ and its derivative $f_i'(\theta)$.
      - A logits model that defines the logits $\alpha(\theta)$ and their derivatives $\alpha'(\theta)$.
+     - A customizable probability function to compute probabilities from logits (e.g., softmax or sigmoid).
+     - A sampling function to draw samples from the probability distribution (e.g., Bernoulli).
 
    ```python
    from mellowgate.api.functions import DiscreteProblem, Branch, LogitsModel
 
+   # Define branches
    branches = [
        Branch(
            function=lambda th: float(np.cos(th)),
@@ -206,50 +209,56 @@ The `mellowgate` library provides a Python API for gradient estimation in discre
        )
    ]
 
+   # Define a custom sigmoid probability function
+   def sigmoid(logits):
+       return 1 / (1 + np.exp(-logits))
+
+   # Define a custom Bernoulli sampling function
+   def bernoulli_sampling(probabilities):
+       return np.random.choice(len(probabilities), p=probabilities)
+
+   # Create a logits model with sigmoid probabilities
    logits_model = LogitsModel(
        logits_function=lambda th: alpha * th,
-       logits_derivative_function=lambda th: alpha
+       logits_derivative_function=lambda th: alpha,
+       probability_function=sigmoid,  # Use sigmoid for probabilities
    )
 
-   problem = DiscreteProblem(branches=branches, logits_model=logits_model)
+   # Define the discrete problem with Bernoulli sampling
+   problem = DiscreteProblem(
+       branches=branches,
+       logits_model=logits_model,
+       sampling_function=bernoulli_sampling,  # Use Bernoulli sampling
+   )
    ```
 
 2. **Mathematical Formulation**:
-   - The library is designed to solve discrete optimization problems by estimating gradients through stochastic relaxations. Below is the mathematical formulation:
+   - The library is designed to solve discrete optimization problems by estimating gradients through stochastic relaxations. Below is the updated mathematical formulation:
 
-     - **Discrete Optimization Problem**:
-       Given a parameter $\theta$, the goal is to optimize the expected value of a function $f(x; \theta)$ over discrete choices $x \in \{x_1, x_2, \dots, x_N\}$:
-       $$
-       \mathbb{E}[f(x; \theta)] = \sum_{i=1}^N \pi(x_i | \theta) f(x_i; \theta),
-       $$
-       where $\pi(x_i | \theta)$ is the probability of selecting $x_i$.
+     1. **Discrete Optimization Problem**:
+       - Given a parameter $\theta$, the goal is to optimize the expected value of a function $f(x; \theta)$ over discrete choices $x \in \{x_1, x_2, \dots, x_N\}$:
+         $$
+         \mathbb{E}[f(x; \theta)] = \sum_{i=1}^N \pi(x_i | \theta) f(x_i; \theta),
+         $$
+         where $\pi(x_i | \theta)$ is the probability of selecting $x_i$.
 
-     - **Logits and Softmax**:
-       The probabilities $\pi(x_i | \theta)$ are modeled using a softmax function over logits $\alpha_i(\theta)$:
-       $$
-       \pi(x_i | \theta) = \frac{\exp(\alpha_i(\theta))}{\sum_{j=1}^N \exp(\alpha_j(\theta))}.
-       $$
+     2. **Stochastic Sampling**:
+       - To compute stochastic values, samples are drawn from the probability distribution $\pi(x_i | \theta)$ using a user-defined sampling function $S$:
+         $$
+         x \sim S(\pi(x_i | \theta)).
+         $$
+       - For example:
+         - **Bernoulli Sampling**: $S(\pi) = \text{Bernoulli}(\pi)$
 
-     - **Gradient Estimation**:
-       The gradient of the objective with respect to $\theta` is:
-       $$
-       \nabla_\theta \mathbb{E}[f(x; \theta)] = \sum_{i=1}^N \nabla_\theta \pi(x_i | \theta) f(x_i; \theta) + \pi(x_i | \theta) \nabla_\theta f(x_i; \theta).
-       $$
+     3. **Gradient Estimation**:
+       - The gradient of the objective with respect to $\theta$ is:
+         $$
+         \nabla_\theta \mathbb{E}[f(x; \theta)] = \sum_{i=1}^N \nabla_\theta \pi(x_i | \theta) f(x_i; \theta) + \pi(x_i | \theta) \nabla_\theta f(x_i; \theta).
+         $$
+       - This gradient is estimated using methods like finite differences, REINFORCE, and Gumbel-Softmax.
 
-3. **Gradient Estimation Methods**:
-   - The library supports multiple gradient estimation methods:
-     - **Finite Differences**: Approximates the gradient using central differences:
-       $$
-       \nabla_\theta \mathbb{E}[f(\theta)] \approx \frac{f(\theta + \epsilon) - f(\theta - \epsilon)}{2\epsilon}
-       $$
-     - **REINFORCE**: Uses the score function estimator:
-       $$
-       \nabla_\theta \mathbb{E}[f(\theta)] \approx \mathbb{E}[(f(x) - b) \nabla_\theta \log \pi(x|\theta)]
-       $$
-     - **Gumbel-Softmax**: Provides a differentiable relaxation using the Gumbel distribution:
-       $$
-       \nabla_\theta \mathbb{E}[f(\theta)] \approx \mathbb{E}[f(x) \nabla_\theta \pi(x|\theta)]
-       $$
+     4. **Stochastic Relaxation**:
+       - To enable gradient-based optimization, stochastic relaxations like Gumbel-Softmax introduce continuous approximations to discrete choices, allowing backpropagation through $\pi(x_i | \theta)$.
 
    ```python
    from mellowgate.api.estimators import FiniteDifferenceConfig, ReinforceConfig, GumbelSoftmaxConfig

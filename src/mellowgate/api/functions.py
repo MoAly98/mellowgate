@@ -43,29 +43,16 @@ class Branch:
 class LogitsModel:
     """Represents the logits model for discrete probability distributions.
 
-    The logits model defines how the logits (log-odds) for each branch are computed
-    as a function of the parameter theta. This is used to create probability
-    distributions over the discrete choices.
-
     Attributes:
-        logits_function: A callable that takes theta and returns an array of logits
-                        with shape (num_branches,).
-        logits_derivative_function: Optional callable that returns the derivative
-                                  of logits with respect to theta. Required for
-                                  exact gradient computation.
-
-    Examples:
-        >>> import numpy as np
-        >>> # Linear logits model
-        >>> alpha = np.array([1.0, -0.5, 0.0])
-        >>> logits_model = LogitsModel(
-        ...     logits_function=lambda theta: alpha * theta,
-        ...     logits_derivative_function=lambda theta: alpha
-        ... )
+        logits_function: A callable that takes theta and returns an array of logits.
+        logits_derivative_function: Optional callable for logits derivatives.
+        probability_function: Optional callable to compute probabilities from logits.
+                              Defaults to softmax.
     """
 
     logits_function: Callable[[float], np.ndarray]  # returns shape (K,)
     logits_derivative_function: Optional[Callable[[float], np.ndarray]] = None
+    probability_function: Callable[[np.ndarray], np.ndarray] = softmax
 
 
 @dataclass
@@ -98,6 +85,9 @@ class DiscreteProblem:
     branches: List[Branch]
     logits_model: LogitsModel
     random_generator: np.random.Generator = np.random.default_rng(0)  # type: ignore
+    sampling_function: Callable[[np.ndarray], int] | np.random.Generator = (
+        np.random.default_rng(0)
+    )
 
     @property
     def num_branches(self) -> int:
@@ -111,18 +101,16 @@ class DiscreteProblem:
     def compute_probabilities(self, theta: float) -> np.ndarray:
         """Compute the probability distribution over branches for given theta.
 
-        Uses the softmax function to convert logits into a valid probability
-        distribution that sums to 1.
+        Uses the provided probability function from logits_model.
 
         Args:
             theta: The parameter value at which to evaluate probabilities.
 
         Returns:
-            numpy.ndarray: Probability distribution over branches with shape
-                          (num_branches,). All values are in [0, 1] and sum to 1.
+            numpy.ndarray: Probability distribution over branches.
         """
         logits = self.logits_model.logits_function(theta)
-        return softmax(logits)
+        return self.logits_model.probability_function(logits)
 
     def compute_function_values(self, theta: float) -> np.ndarray:
         """Evaluate all branch functions at the given theta.
@@ -221,3 +209,54 @@ class DiscreteProblem:
         probability_term = np.sum(function_values * probability_gradients)
 
         return float(function_term + probability_term)
+
+    def sample_branch(self, theta: float, num_samples: int = 1000) -> np.ndarray:
+        """Sample branch indices based on the probability distribution.
+
+        Args:
+            theta: The parameter value at which to sample.
+            num_samples: Number of samples for stochastic sampling.
+
+        Returns:
+            np.ndarray: Indices of the sampled branches.
+
+        Notes:
+            Uses the provided sampling function if available, otherwise defaults
+            to sampling based on probabilities using the numpy generator.
+        """
+        probabilities = self.compute_probabilities(theta)
+
+        match self.sampling_function:
+            case func if callable(func):
+                # Case 1: sampling_function is a Callable
+                return np.array([func(probabilities) for _ in range(num_samples)])
+            case generator if isinstance(generator, np.random.Generator):
+                # Case 2: sampling_function is a np.random.Generator
+                return generator.choice(
+                    self.num_branches, size=num_samples, p=probabilities
+                )
+            case _:
+                raise ValueError(
+                    "sampling_function must be either a \
+                        Callable or a np.random.Generator."
+                )
+
+    def compute_stochastic_values(
+        self, theta: float, num_samples: int = 1000
+    ) -> np.ndarray:
+        """Compute stochastic values of the discrete problem at theta.
+
+        This method samples branches based on the probability distribution and
+        evaluates their function values.
+
+        Args:
+            theta: The parameter value at which to evaluate.
+            num_samples: Number of samples for stochastic sampling.
+
+        Returns:
+            np.ndarray: Stochastic values of the discrete problem.
+        """
+        sampled_branches = self.sample_branch(theta, num_samples=num_samples)
+        return np.array(
+            [self.branches[branch].function(theta) for branch in sampled_branches]
+        )

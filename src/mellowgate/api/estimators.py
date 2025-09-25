@@ -64,7 +64,6 @@ def finite_difference_gradient(
         evaluation point, making it stochastic. The accuracy depends on both
         the step size and number of samples.
     """
-    random_generator = discrete_problem.random_generator
 
     def _monte_carlo_expectation(theta: float) -> float:
         """
@@ -76,20 +75,10 @@ def finite_difference_gradient(
         Returns:
             Monte Carlo estimate of the expectation.
         """
-        # Get probability distribution over discrete choices
-        choice_probabilities = discrete_problem.compute_probabilities(theta)
-
-        # Sample discrete choices according to probabilities
-        sampled_choice_indices = random_generator.choice(
-            discrete_problem.num_branches,
-            size=config.num_samples,
-            p=choice_probabilities,
+        sampled_values = discrete_problem.compute_stochastic_values(
+            theta, num_samples=config.num_samples
         )
-
-        # Evaluate function at sampled choices and compute empirical mean
-        function_values_at_choices = discrete_problem.compute_function_values(theta)
-        sampled_function_values = function_values_at_choices[sampled_choice_indices]
-        return float(np.mean(sampled_function_values))
+        return float(np.mean(sampled_values))
 
     # Evaluate expectations at perturbed parameter values
     expectation_at_plus = _monte_carlo_expectation(parameter_value + config.step_size)

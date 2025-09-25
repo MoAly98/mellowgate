@@ -35,11 +35,30 @@ branches = [
     ),
 ]
 alpha = np.array([-1.0, 0.0, 1.0])
+
+
+# Define a custom sigmoid probability function
+def sigmoid(logits):
+    return 1 / (1 + np.exp(-logits))
+
+
+# Define a custom Bernoulli sampling function
+def bernoulli_sampling(probabilities):
+    return np.random.choice(len(probabilities), p=probabilities)
+
+
+# Update logits model to use sigmoid and Bernoulli sampling
 logits_model = LogitsModel(
-    logits_function=lambda th: alpha * th, logits_derivative_function=lambda th: alpha
+    logits_function=lambda th: alpha * th,
+    logits_derivative_function=lambda th: alpha,
+    probability_function=sigmoid,  # Use sigmoid for probabilities
 )
 
-prob = DiscreteProblem(branches=branches, logits_model=logits_model)
+prob = DiscreteProblem(
+    branches=branches,
+    logits_model=logits_model,
+    sampling_function=bernoulli_sampling,  # Use Bernoulli sampling
+)
 
 thetas = np.linspace(-2.5, 2.5, 21)
 sweep = Sweep(
@@ -60,6 +79,16 @@ sweep = Sweep(
 )
 
 results = run_parameter_sweep(prob, sweep)
+
+# Compute stochastic values for demonstration
+stochastic_values = [
+    prob.compute_stochastic_values(theta, num_samples=100) for theta in thetas
+]
+print("Stochastic values:", stochastic_values)
+
+# Propagate sampled choice index to estimators
+sampled_indices = [prob.sample_branch(theta, num_samples=100) for theta in thetas]
+print("Sampled indices:", sampled_indices)
 
 # plotting (uses exact gradient if available)
 plot_gradient_estimates_vs_truth(
