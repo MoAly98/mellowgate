@@ -240,7 +240,7 @@ make example
 - **Design**: Logits should reflect the relative importance or likelihood of each branch. For example:
   - If a branch is more likely for larger $\theta$, assign it a higher $\alpha_k(\theta)$.
   - Ensure logits are scaled appropriately to avoid numerical instability in the softmax computation.
-- **Normalization**: While the softmax function is a common choice to convert logits into probabilities that sum to 1, other methods such as sigmoid, temperature-scaled softmax, or sparsemax can also be used depending on the problem requirements. Each method has its own advantages and should be chosen based on the desired properties of the probability distribution.
+- **Normalization**: The softmax function is a common choice to convert logits into probabilities that sum to 1. Other methods such as sigmoid, temperature-scaled softmax, or sparsemax can also be used depending on the problem requirements. Each method has its own advantages and should be chosen based on the desired properties of the probability distribution.
 
 ---
 
