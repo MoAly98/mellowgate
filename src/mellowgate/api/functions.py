@@ -25,6 +25,11 @@ class Branch:
         derivative_function: Optional callable that returns the derivative of the
                            function with respect to theta. Required for exact
                            gradient computation.
+        threshold: Optional tuple defining the range of theta values where this
+                   branch is active. Each element in the tuple can be None:
+                   - (None, upper): No lower threshold, active for theta < upper.
+                   - (lower, None): No upper threshold, active for theta >= lower.
+                   - (None, None): Always active.
 
     Examples:
         >>> import numpy as np
@@ -37,6 +42,7 @@ class Branch:
 
     function: Callable[[float], float]
     derivative_function: Optional[Callable[[float], float]] = None
+    threshold: Optional[tuple[Optional[float], Optional[float]]] = (None, None)
 
 
 @dataclass
@@ -67,7 +73,7 @@ class DiscreteProblem:
     Attributes:
         branches: List of Branch objects representing the discrete choices.
         logits_model: LogitsModel defining the probability distribution.
-        random_generator: NumPy random generator for reproducible sampling.
+        sampling_function: Callable or random generator for sampling branches.
 
     Properties:
         num_branches: Number of branches in the problem.
@@ -84,7 +90,6 @@ class DiscreteProblem:
 
     branches: List[Branch]
     logits_model: LogitsModel
-    random_generator: np.random.Generator = np.random.default_rng(0)  # type: ignore
     sampling_function: Callable[[np.ndarray], int] | np.random.Generator = (
         np.random.default_rng(0)
     )
@@ -98,22 +103,99 @@ class DiscreteProblem:
         """
         return len(self.branches)
 
+    def generate_threshold_conditions(
+        self,
+        theta: np.ndarray,
+        threshold: Optional[tuple[Optional[float], Optional[float]]],
+    ) -> np.ndarray:
+        """Generate conditions for np.piecewise based on an array of theta values
+        and a threshold.
+
+        Args:
+            theta: Array of parameter values to check.
+            threshold: The threshold to check against. Can be:
+                - (None, upper): No lower threshold, active for theta < upper.
+                - (lower, None): No upper threshold, active for theta >= lower.
+                - (None, None): Always active.
+
+        Returns:
+            np.ndarray: Boolean array indicating whether each theta satisfies the
+            threshold.
+
+        Raises:
+            ValueError: If theta is not an array.
+        """
+        if not isinstance(theta, np.ndarray):
+            raise ValueError("Theta must be a numpy array.")
+        if threshold is None or threshold == (None, None):
+            return np.ones_like(theta, dtype=bool)
+        lower, upper = threshold
+        conditions = np.ones_like(theta, dtype=bool)
+        if lower is not None:
+            conditions &= theta >= lower
+        if upper is not None:
+            conditions &= theta < upper
+        return conditions
+
     def compute_probabilities(self, theta: float) -> np.ndarray:
         """Compute the probability distribution over branches for given theta.
 
-        Uses the provided probability function from logits_model.
+        This method computes the logits for the given theta, transforms them into
+        probabilities using the specified probability function (default: softmax),
+        and ensures that the sum of probabilities is 1.
 
         Args:
-            theta: The parameter value at which to evaluate probabilities.
+            theta: The parameter value for which to compute probabilities.
 
         Returns:
-            numpy.ndarray: Probability distribution over branches.
+            np.ndarray: Probability distribution over branches.
+
+        Raises:
+            ValueError: If the sum of probabilities is not approximately 1.
         """
         logits = self.logits_model.logits_function(theta)
-        return self.logits_model.probability_function(logits)
+        probabilities = self.logits_model.probability_function(logits)
+
+        # Ensure the sum of probabilities is approximately 1
+        if not np.isclose(probabilities.sum(), 1.0):
+            raise ValueError(
+                f"Probabilities do not sum to 1 for theta={theta}. "
+                f"Sum is {probabilities.sum():.4f}."
+            )
+
+        return probabilities
+
+    def compute_function_values_deterministic(self, theta: np.ndarray) -> np.ndarray:
+        """Evaluate all branch functions at the given theta deterministically.
+
+        This method evaluates functions considering thresholds. If a branch's
+        threshold excludes the given theta, its function value will be set to NaN.
+
+        Args:
+            theta: Array of parameter values at which to evaluate functions.
+
+        Returns:
+            numpy.ndarray: Array of function values with shape (num_branches,).
+
+        Raises:
+            ValueError: If theta is not a numpy array.
+        """
+        if not isinstance(theta, np.ndarray):
+            raise ValueError("Theta must be a numpy array.")
+        conditions = [
+            self.generate_threshold_conditions(theta, branch.threshold)
+            for branch in self.branches
+        ]
+        functions = [
+            lambda t, func=branch.function: func(t) for branch in self.branches
+        ]
+        return np.piecewise(theta, conditions, functions)
 
     def compute_function_values(self, theta: float) -> np.ndarray:
         """Evaluate all branch functions at the given theta.
+
+        This method evaluates all functions without considering thresholds.
+        The branch selection based on sampled indices happens later.
 
         Args:
             theta: The parameter value at which to evaluate functions.
@@ -229,7 +311,10 @@ class DiscreteProblem:
         match self.sampling_function:
             case func if callable(func):
                 # Case 1: sampling_function is a Callable
-                return np.array([func(probabilities) for _ in range(num_samples)])
+                samples = np.fromiter(
+                    (func(probabilities) for _ in range(num_samples)), dtype=int
+                )
+                return samples
             case generator if isinstance(generator, np.random.Generator):
                 # Case 2: sampling_function is a np.random.Generator
                 return generator.choice(
@@ -256,7 +341,13 @@ class DiscreteProblem:
         Returns:
             np.ndarray: Stochastic values of the discrete problem.
         """
+        # Sample branch indices using the custom sampling function
         sampled_branches = self.sample_branch(theta, num_samples=num_samples)
-        return np.array(
-            [self.branches[branch].function(theta) for branch in sampled_branches]
-        )
+
+        # Precompute function values for all branches
+        function_values_at_choices = self.compute_function_values(theta)
+
+        # Index the precomputed function values using sampled branches
+        sampled_function_values = function_values_at_choices[sampled_branches]
+
+        return sampled_function_values
