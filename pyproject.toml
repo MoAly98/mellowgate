@@ -1,6 +1,9 @@
 [project]
 authors = [{name = "maly", email = "mohamedaymanali@gmail.com"}]
-dependencies = []
+dependencies = [
+    "numpy>=2.3.3,<3",
+    "matplotlib>=3.10.6,<4",
+]
 name = "mellowgate"
 requires-python = ">= 3.11"
 version = "0.1.0"

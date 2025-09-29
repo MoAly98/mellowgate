@@ -791,7 +791,10 @@ packages:
 - pypi: .
   name: mellowgate
   version: 0.1.0
-  sha256: 6a927882e1f985ca77bc88f6c563a7ebfd958c64250e4becc02e229703df396b
+  sha256: b5cd0ffb07c77c88d68e8aad626f79ac702410aae6d90936377c7d5c8e4a0fbf
+  requires_dist:
+  - numpy>=2.3.3,<3
+  - matplotlib>=3.10.6,<4
   requires_python: '>=3.11'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/munkres-1.1.4-pyhd8ed1ab_1.conda

@@ -18,24 +18,22 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+    - name: Setup pixi
+      uses: prefix-dev/setup-pixi@v0.8.1
       with:
-        python-version: ${{ matrix.python-version }}
+        pixi-version: v0.40.0
+        cache: true
 
-    - name: Install dependencies
+    - name: Install dependencies with pixi
       run: |
-        python -m pip install --upgrade pip
-        pip install black==25.9.0 flake8==7.3.0 isort==6.0.1
-        # Install project in editable mode
-        pip install -e .
+        pixi install
 
     - name: Check code formatting with Black
       run: |
         echo "Checking Python code formatting with Black..."
-        black --check --diff src/ example.py
+        pixi run black --check --diff src/ example.py
         if [ $? -ne 0 ]; then
-          echo "❌ Code formatting issues found. Run 'black src/ example.py' to fix."
+          echo "❌ Code formatting issues found. Run 'pixi run black src/ example.py' to fix."
           exit 1
         else
           echo "✅ Code formatting is correct."
@@ -44,9 +42,9 @@ jobs:
     - name: Check import sorting with isort
       run: |
         echo "Checking import sorting with isort..."
-        isort --check-only --diff src/ example.py
+        pixi run isort --check-only --diff src/ example.py
         if [ $? -ne 0 ]; then
-          echo "❌ Import sorting issues found. Run 'isort src/ example.py' to fix."
+          echo "❌ Import sorting issues found. Run 'pixi run isort src/ example.py' to fix."
           exit 1
         else
           echo "✅ Import sorting is correct."
@@ -55,7 +53,7 @@ jobs:
     - name: Lint with flake8
       run: |
         echo "Linting Python code with flake8..."
-        flake8 src/ example.py
+        pixi run flake8 src/ example.py
         if [ $? -ne 0 ]; then
           echo "❌ Linting issues found. Check the output above for details."
           exit 1
@@ -105,22 +103,20 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+    - name: Setup pixi
+      uses: prefix-dev/setup-pixi@v0.8.1
       with:
-        python-version: ${{ matrix.python-version }}
+        pixi-version: v0.40.0
+        cache: true
 
-    - name: Install dependencies
+    - name: Install dependencies with pixi
       run: |
-        python -m pip install --upgrade pip
-        pip install pytest pytest-cov
-        # Install project in editable mode
-        pip install -e .
+        pixi install
 
     - name: Run unit tests with pytest
       run: |
         echo "Running unit tests with pytest..."
-        pytest tests/ -v --cov=mellowgate --cov-report=term-missing --cov-report=xml
+        pixi run pytest tests/ -v --cov=mellowgate --cov-report=term-missing --cov-report=xml
         if [ $? -ne 0 ]; then
           echo "❌ Unit tests failed."
           exit 1
