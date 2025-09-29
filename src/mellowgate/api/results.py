@@ -12,7 +12,7 @@ class ResultsContainer:
     gradient_estimates: Dict[str, Dict[str, np.ndarray]]
     sampled_points: Optional[Dict[str, np.ndarray]] = None
     expectation_values: Optional[np.ndarray] = None
-    discrete_distributions: Optional[Dict[str, np.ndarray]] = None
+    discrete_distributions: Optional[np.ndarray] = None
 
     def add_sampled_points(
         self, estimator_name: str, sampled_points: np.ndarray
@@ -26,6 +26,6 @@ class ResultsContainer:
         """Add expectation values."""
         self.expectation_values = expectation_values
 
-    def add_discrete_distributions(self, distributions: Dict[str, np.ndarray]) -> None:
+    def add_discrete_distributions(self, distributions: np.ndarray) -> None:
         """Add discrete distributions."""
         self.discrete_distributions = distributions

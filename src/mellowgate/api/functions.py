@@ -14,6 +14,19 @@ from mellowgate.utils.functions import softmax
 
 
 @dataclass
+class Bound:
+    """Represents a bound (lower or upper) for a parameter.
+
+    Attributes:
+        value: The numerical value of the bound.
+        inclusive: Whether the bound is inclusive (True) or exclusive (False).
+    """
+
+    value: float
+    inclusive: bool = True
+
+
+@dataclass
 class Branch:
     """Represents a single branch in a discrete optimization problem.
 
@@ -42,7 +55,7 @@ class Branch:
 
     function: Callable[[float], float]
     derivative_function: Optional[Callable[[float], float]] = None
-    threshold: Optional[tuple[Optional[float], Optional[float]]] = (None, None)
+    threshold: Optional[tuple[Optional[Bound], Optional[Bound]]] = (None, None)
 
 
 @dataclass
@@ -106,7 +119,7 @@ class DiscreteProblem:
     def generate_threshold_conditions(
         self,
         theta: np.ndarray,
-        threshold: Optional[tuple[Optional[float], Optional[float]]],
+        threshold: Optional[tuple[Optional[Bound], Optional[Bound]]],
     ) -> np.ndarray:
         """Generate conditions for np.piecewise based on an array of theta values
         and a threshold.
@@ -114,8 +127,9 @@ class DiscreteProblem:
         Args:
             theta: Array of parameter values to check.
             threshold: The threshold to check against. Can be:
-                - (None, upper): No lower threshold, active for theta < upper.
-                - (lower, None): No upper threshold, active for theta >= lower.
+                - (lower, upper): Active for lower < or <= theta < or <= upper.
+                - (None, upper): No lower threshold, active for theta < or <= upper.
+                - (lower, None): No upper threshold, active for theta > or >= lower.
                 - (None, None): Always active.
 
         Returns:
@@ -132,9 +146,13 @@ class DiscreteProblem:
         lower, upper = threshold
         conditions = np.ones_like(theta, dtype=bool)
         if lower is not None:
-            conditions &= theta >= lower
+            conditions &= (
+                theta >= lower.value if lower.inclusive else theta > lower.value
+            )
         if upper is not None:
-            conditions &= theta < upper
+            conditions &= (
+                theta < upper.value if upper.inclusive else theta <= upper.value
+            )
         return conditions
 
     def compute_probabilities(self, theta: float) -> np.ndarray:

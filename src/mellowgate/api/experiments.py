@@ -85,6 +85,11 @@ def run_parameter_sweep(
 
     results_containers = {}
 
+    # Compute discrete distributions independent of estimators
+    discrete_distribution = discrete_problem.compute_function_values_deterministic(
+        sweep_config.theta_values
+    )
+
     for estimator_name, estimator_spec in sweep_config.estimator_configs.items():
         logger.info(f"Running estimator: {estimator_name}")
 
@@ -161,6 +166,16 @@ def run_parameter_sweep(
             f"Finished estimator: {estimator_name}, Total Time: {elapsed_time:.2f}s"
         )
 
+        # Compute sampled branch indices for each theta value
+        sampled_branch_indices = np.array(
+            [
+                discrete_problem.sample_branch(
+                    theta, num_samples=sweep_config.num_repetitions
+                )
+                for theta in sweep_config.theta_values
+            ]
+        )
+
         # Compute expectation values of the function itself
         expectation_values = np.array(
             [
@@ -169,19 +184,9 @@ def run_parameter_sweep(
             ]
         )
 
-        # Compute discrete distributions independent of estimators
-        discrete_distributions = {
-            "function_values": np.array(
-                [
-                    discrete_problem.compute_function_values_deterministic(
-                        sweep_config.theta_values
-                    )
-                ]
-            )
-        }
-
-        # Compute sampled points as the mean of means across all estimators
-        sampled_points = {"mean_sampled_points": sample_mean}
+        # Store the most repeated indices in ResultsContainer
+        sampled_points = {"sampled_branch_indices": sampled_branch_indices}
+        print(sampled_points)
 
         # Store results for this estimator
         results_containers[estimator_name] = ResultsContainer(
@@ -195,7 +200,7 @@ def run_parameter_sweep(
             },
             theta_values=sweep_config.theta_values,
             expectation_values=expectation_values,
-            discrete_distributions=discrete_distributions,
+            discrete_distributions=discrete_distribution,
             sampled_points=sampled_points,
         )
 
