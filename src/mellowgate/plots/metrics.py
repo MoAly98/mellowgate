@@ -3,9 +3,12 @@
 This module provides plotting functions for analyzing and visualizing the
 performance of different gradient estimation methods, including accuracy
 comparisons, bias-variance decomposition, and timing analysis.
+
+All plotting functions are optimized to work with the vectorized API,
+supporting both scalar and array-based gradient functions.
 """
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,7 +20,9 @@ from mellowgate.utils.outputs import OutputManager
 
 def plot_gradient_estimates_vs_truth(
     results_dict: dict[str, ResultsContainer],
-    true_gradient_function: Callable[[float], Optional[float]],
+    true_gradient_function: Callable[
+        [Union[float, np.ndarray]], Union[Optional[float], Optional[np.ndarray]]
+    ],
     output_manager: OutputManager,
     plot_title: Optional[str] = None,
     output_filename: Optional[str] = None,
@@ -33,9 +38,10 @@ def plot_gradient_estimates_vs_truth(
     Args:
         results_dict: Dictionary mapping estimator names to ResultsContainer
                        objects containing experiment results.
-        true_gradient_function: Function that computes the true analytical
-                               gradient for a given theta value. May return
-                               None if unavailable.
+        true_gradient_function: Vectorized function that computes the true analytical
+                               gradient for given theta value(s). May return
+                               None if unavailable. Supports both scalar and
+                               array inputs.
         output_manager: OutputManager instance for handling file paths.
         plot_title: Optional custom title for the plot.
         output_filename: Optional custom filename for the saved plot.
@@ -52,10 +58,13 @@ def plot_gradient_estimates_vs_truth(
 
     plt.figure(figsize=(7, 4))
 
+    # Get theta values from first result (they should be the same for all estimators)
+    first_result = next(iter(results_dict.values()))
+    theta_values = first_result.theta_values
+
     # Plot each estimator's results
     for estimator_name, results in results_dict.items():
         for estimator_name, estimator_results in results.gradient_estimates.items():
-            theta_values = results.theta_values
             mean_estimates = estimator_results["mean"]
             std_estimates = estimator_results["std"]
 
@@ -74,22 +83,32 @@ def plot_gradient_estimates_vs_truth(
                 alpha=0.15,
             )
 
-    # Plot true gradient if available
-    true_gradients = np.array(
-        [true_gradient_function(float(theta)) for theta in results.theta_values]
-    )
+    # Plot true gradient if available - use vectorized call
+    try:
+        true_gradients = true_gradient_function(theta_values)
 
-    if None in true_gradients:
+        if true_gradients is None:
+            logger.warning(
+                "True gradient function returned None. Skipping analytical "
+                "gradient plot."
+            )
+        else:
+            # Handle both scalar and array returns
+            if np.isscalar(true_gradients):
+                true_gradients = np.full_like(theta_values, true_gradients)
+            else:
+                true_gradients = np.squeeze(true_gradients)
+
+            plt.plot(
+                theta_values,
+                true_gradients,
+                "r--",
+                linewidth=2,
+                label="analytical gradient",
+            )
+    except Exception as e:
         logger.warning(
-            "Some true gradient values are missing. Skipping analytical gradient plot."
-        )
-    else:
-        plt.plot(
-            results.theta_values,
-            true_gradients,
-            "r--",
-            linewidth=2,
-            label="analytical gradient",
+            f"Could not compute true gradients: {e}. Skipping analytical gradient plot."
         )
 
     # Format and save plot
@@ -108,7 +127,9 @@ def plot_gradient_estimates_vs_truth(
 
 def plot_bias_variance_mse_analysis(
     results_dict: dict[str, ResultsContainer],
-    true_gradient_function: Callable[[float], Optional[float]],
+    true_gradient_function: Callable[
+        [Union[float, np.ndarray]], Union[Optional[float], Optional[np.ndarray]]
+    ],
     output_manager: OutputManager,
     plot_title: Optional[str] = None,
     output_filename: Optional[str] = None,
@@ -123,7 +144,8 @@ def plot_bias_variance_mse_analysis(
     Args:
         results_dict: Dictionary mapping estimator names to ResultsContainer
                        objects containing experiment results.
-        true_gradient_function: Function that computes the true analytical gradient.
+        true_gradient_function: Vectorized function that computes the true analytical
+                               gradient. Supports both scalar and array inputs.
         output_manager: OutputManager instance for handling file paths.
         plot_title: Optional custom title for the plot.
         output_filename: Optional custom filename for the saved plot.
@@ -140,30 +162,45 @@ def plot_bias_variance_mse_analysis(
 
     plt.figure(figsize=(7, 4))
 
+    # Get theta values from first result
+    first_result = next(iter(results_dict.values()))
+    theta_values = first_result.theta_values
+
+    # Compute true gradients once using vectorized call
+    try:
+        true_gradients = true_gradient_function(theta_values)
+
+        if true_gradients is None:
+            logger.warning(
+                "True gradient function returned None. Skipping "
+                "bias/variance/MSE analysis."
+            )
+            return
+
+        # Handle both scalar and array returns
+        if np.isscalar(true_gradients):
+            true_gradients = np.full_like(theta_values, true_gradients)
+        else:
+            true_gradients = np.squeeze(true_gradients)
+
+    except Exception as e:
+        logger.warning(
+            f"Could not compute true gradients: {e}. Skipping "
+            f"bias/variance/MSE analysis."
+        )
+        return
+
     for estimator_name, results in results_dict.items():
         for estimator_name, estimator_results in results.gradient_estimates.items():
-            theta_values = results.theta_values
             mean_estimates = estimator_results["mean"]
             std_estimates = estimator_results["std"]
-
-            # Compute true gradients
-            true_gradients = np.array(
-                [true_gradient_function(float(theta)) for theta in theta_values]
-            )
-
-            if None in true_gradients:
-                logger.warning(
-                    f"Some true gradient values are missing for {estimator_name}. "
-                    f"Skipping bias/variance/MSE analysis."
-                )
-                continue
 
             # Ensure mean and std estimates are 1D arrays
             mean_estimates = np.squeeze(mean_estimates)
             std_estimates = np.squeeze(std_estimates)
 
             # Compute bias, variance, and MSE
-            bias_values = np.abs(mean_estimates - true_gradients)  # type: ignore
+            bias_values = np.abs(mean_estimates - true_gradients)
             variance_values = std_estimates**2
             mse_values = bias_values**2 + variance_values
 
@@ -172,12 +209,20 @@ def plot_bias_variance_mse_analysis(
             variance_values = np.squeeze(variance_values)
             mse_values = np.squeeze(mse_values)
 
-            # Plot on log scale
-            plt.semilogy(theta_values, bias_values, label=f"{estimator_name} bias")
+            # Plot on log scale (add small epsilon to avoid log(0))
+            epsilon = 1e-10
             plt.semilogy(
-                theta_values, std_estimates, "--", label=f"{estimator_name} std"
+                theta_values, bias_values + epsilon, label=f"{estimator_name} bias"
             )
-            plt.semilogy(theta_values, mse_values, ":", label=f"{estimator_name} MSE")
+            plt.semilogy(
+                theta_values,
+                std_estimates + epsilon,
+                "--",
+                label=f"{estimator_name} std",
+            )
+            plt.semilogy(
+                theta_values, mse_values + epsilon, ":", label=f"{estimator_name} MSE"
+            )
 
     # Format and save plot
     plt.xlabel("theta")

@@ -383,7 +383,9 @@ class DiscreteProblem:
         function_values = self.compute_function_values(theta)
         return np.sum(probabilities * function_values, axis=0)
 
-    def compute_exact_gradient(self, theta: np.ndarray) -> Optional[np.ndarray]:
+    def compute_exact_gradient(
+        self, theta: Union[float, np.ndarray]
+    ) -> Optional[Union[float, np.ndarray]]:
         """Compute the exact gradient of the expected value with respect to theta
         using vectorized operations.
 
@@ -391,15 +393,17 @@ class DiscreteProblem:
         and requires both logits derivatives and function derivatives to be
         available.
         All computations are vectorized for efficiency with arrays of theta values.
+        Supports both scalar and array inputs for maximum flexibility.
 
         Args:
             theta: The parameter value(s) at which to evaluate the gradient.
                    Can be scalar, 1D array, or higher dimensional.
 
         Returns:
-            np.ndarray: Exact gradient values.
-                       Shape matches input theta shape.
-                       Returns None if any required derivative is missing.
+            Union[float, np.ndarray]: Exact gradient values.
+                                     Returns scalar for scalar input,
+                                     array for array input.
+                                     Returns None if any required derivative is missing.
 
         Formula:
             dE/dtheta = sum_k [p_k * df_k/dtheta + f_k * dp_k/dtheta]
@@ -414,20 +418,31 @@ class DiscreteProblem:
             >>> theta = np.array([0.0, 1.0, 2.0])
             >>> grad = problem.compute_exact_gradient(theta)
             >>> grad.shape if grad is not None  # (3,)
+            >>>
+            >>> scalar_theta = 1.0
+            >>> scalar_grad = problem.compute_exact_gradient(scalar_theta)
+            >>> type(scalar_grad)  # float
         """
+        # Convert to array for consistent handling
+        theta_array = np.asarray(theta)
+        is_scalar_input = theta_array.ndim == 0
+
+        if is_scalar_input:
+            theta_array = theta_array.reshape(1)
+
         # Check if logits derivatives are available
         if self.logits_model.logits_derivative_function is None:
             return None
 
         # Check if function derivatives are available
-        function_derivatives = self.compute_derivative_values(theta)
+        function_derivatives = self.compute_derivative_values(theta_array)
         if function_derivatives is None:
             return None
 
         # Compute required quantities
-        probabilities = self.compute_probabilities(theta)
-        function_values = self.compute_function_values(theta)
-        logits_gradients = self.logits_model.logits_derivative_function(theta)
+        probabilities = self.compute_probabilities(theta_array)
+        function_values = self.compute_function_values(theta_array)
+        logits_gradients = self.logits_model.logits_derivative_function(theta_array)
 
         # Compute probability gradients using chain rule through softmax
         # For 2D arrays, compute mean along branch dimension (axis=0) for each theta
@@ -443,7 +458,12 @@ class DiscreteProblem:
         function_term = np.sum(probabilities * function_derivatives, axis=0)
         probability_term = np.sum(function_values * probability_gradients, axis=0)
 
-        return function_term + probability_term
+        gradient_result = function_term + probability_term
+
+        # Return scalar if input was scalar, array otherwise
+        if is_scalar_input:
+            return float(gradient_result[0])
+        return gradient_result
 
     def sample_branch(self, theta: np.ndarray, num_samples: int = 1000) -> np.ndarray:
         """Sample branch indices based on the probability distribution using
