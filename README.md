@@ -181,9 +181,157 @@ For a complete working example, run:
 make example
 ```
 
+## Mathematical Formulation
+
+### Key Concepts and Symbols
+- **Discrete Optimization Problem**: A problem where the goal is to optimize a function over a set of discrete choices.
+  - $x$: Discrete choices.
+  - $\theta$: Parameter controlling the optimization.
+  - $f(x; \theta)$: Function value for choice $x$ and parameter $\theta$.
+  - $\pi(x | \theta)$: Probability of selecting choice $x$ given $\theta$.
+  - $a(x)$: Logits, which are unnormalized log probabilities used to compute $\pi(x | \theta)$.
+
+### Formulations
+
+1. **Expected Value**:
+   The expected value of the function over discrete choices is:
+   $$
+   \mathbb{E}[f(x; \theta)] = \sum_{i=1}^N \pi(x_i | \theta) f(x_i; \theta),
+   $$
+   where $N$ is the number of discrete choices.
+
+2. **Gradient of Expected Value**:
+   The gradient of the expected value with respect to $\theta" is:
+   $$
+   \nabla_\theta \mathbb{E}[f(x; \theta)] = \sum_{i=1}^N \nabla_\theta \pi(x_i | \theta) f(x_i; \theta) + \pi(x_i | \theta) \nabla_\theta f(x_i; \theta).
+   $$
+
+3. **Stochastic Sampling**:
+   Samples are drawn from the probability distribution $\pi(x | \theta)$ using a user-defined sampling function $S$:
+   $$
+   x \sim S(\pi(x | \theta)).
+   $$
+
+4. **Gradient Estimation Methods**:
+   - **Finite Differences**:
+     $$
+     \nabla_\theta \mathbb{E}[f(x; \theta)] \approx \frac{\mathbb{E}[f(\theta + \epsilon)] - \mathbb{E}[f(\theta - \epsilon)]}{2\epsilon},
+     $$
+     where $\epsilon" is a small perturbation.
+   - **REINFORCE**:
+     $$
+     \nabla_\theta \mathbb{E}[f(x; \theta)] \approx \mathbb{E}\left[f(x) \cdot \nabla_\theta \log \pi(x | \theta)\right].
+     $$
+   - **Gumbel-Softmax**:
+     The Gumbel-Softmax method introduces a continuous relaxation of discrete sampling by adding Gumbel noise $g(x)$ to the logits $a(x)$ and applying the softmax function:
+     $$
+     \pi(x | \theta) = \text{softmax}\left(\frac{a(x) + g(x)}{\tau}\right),
+     $$
+     where $\tau" is the temperature parameter controlling the sharpness of the distribution. As $\tau \to 0$, the distribution becomes one-hot, approximating discrete sampling.
+
+     - **Straight-Through Estimator (STE)**: To enable backpropagation through the discrete sampling process, the STE method is used. During the forward pass, discrete samples are drawn, but during the backward pass, gradients are computed as if the softmax relaxation was used:
+       $$
+       \nabla_\theta \mathbb{E}[f(x; \theta)] \approx \nabla_\theta f(x) + f(x) \cdot \nabla_\theta \pi(x | \theta).
+       $$
+
+### Notes on Choosing Logits
+
+- **Interpretation**: Logits represent unnormalized scores for each branch. Higher logits correspond to higher probabilities after normalization.
+- **Design**: Logits should reflect the relative importance or likelihood of each branch. For example:
+  - If a branch is more likely for larger $\theta$, assign it a higher $\alpha_k(\theta)$.
+  - Ensure logits are scaled appropriately to avoid numerical instability in the softmax computation.
+- **Normalization**: The softmax function is a common choice to convert logits into probabilities that sum to 1. Other methods such as sigmoid, temperature-scaled softmax, or sparsemax can also be used depending on the problem requirements. Each method has its own advantages and should be chosen based on the desired properties of the probability distribution.
+
+---
+
+### Example: Sigmoid-Bernoulli Problem
+
+Consider a discrete optimization problem with two branches:
+$$
+\begin{aligned}
+    f(\theta) &= \begin{cases}
+        \cos(\theta), & \text{if } k = 0, \\
+        \sin(\theta), & \text{if } k = 1.
+    \end{cases}
+\end{aligned}
+$$
+
+The probability of selecting branch $k$ is computed using the sigmoid function:
+$$
+\pi(k | \theta) = \sigma(\alpha_k(\theta)) = \frac{1}{1 + e^{-\alpha_k(\theta)}}.
+$$
+
+Where the logits $\alpha_k(\theta)$ are defined as:
+$$
+\alpha_k(\theta) = \begin{cases}
+    -\theta, & \text{if } k = 0, \\
+    \theta, & \text{if } k = 1.
+\end{cases}
+$$
+
+Samples are drawn from the Bernoulli distribution:
+$$
+\begin{aligned}
+    k \sim \text{Ber}(k; \pi(k | \theta)).
+\end{aligned}
+$$
+
+The expected value of the function is:
+$$
+\mathbb{E}[f(\theta)] = \sum_{k \in \{0, 1\}} \pi(k | \theta) f_k(\theta).
+$$
+
+The analytical expected value is:
+$$
+\mathbb{E}[f(\theta)] = \sigma(-\theta) \cdot \cos(\theta) + \sigma(\theta) \cdot \sin(\theta).
+$$
+---
+
+### Example: Sigmoid-Bernoulli Problem with Three Branches
+
+#### Mathematical Formulation
+
+Consider a discrete optimization problem with three branches:
+$$
+\begin{aligned}
+    f(\theta) &= \begin{cases}
+        \sin(\theta), & \text{if } k = 0, \\
+        \cos(\theta), & \text{if } k = 1, \\
+        \tanh(\theta), & \text{if } k = 2.
+    \end{cases}
+\end{aligned}
+$$
+
+The logits $\alpha_k(\theta)$ are defined as:
+$$
+\alpha_k(\theta) = \begin{cases}
+    -\theta, & \text{if } k = 0, \\
+    \theta, & \text{if } k = 1, \\
+    2\theta, & \text{if } k = 2.
+\end{cases}
+$$
+
+The probabilities $\pi(k | \theta)$ are computed using the softmax function to ensure they sum to 1:
+$$
+\pi(k | \theta) = \frac{\exp(\alpha_k(\theta))}{\sum_{j=0}^{2} \exp(\alpha_j(\theta))}.
+$$
+
+Samples are drawn from the categorical distribution:
+$$
+\begin{aligned}
+    k \sim \text{Cat}(k; \pi(k | \theta)).
+\end{aligned}
+$$
+
+The expected value of the function is:
+$$
+\mathbb{E}[f(\theta)] = \sum_{k \in \{0, 1, 2\}} \pi(k | \theta) f_k(\theta).
+$$
+---
+
 ## mellowgate API Overview
 
-The `mellowgate` library provides a Python API for gradient estimation in discrete optimization problems. Below is a brief explanation of the API, supplemented with mathematical formulations.
+The `mellowgate` library provides a Python API for gradient estimation in discrete optimization problems. Below is a brief explanation of the API, supplemented with examples.
 
 ### Core Concepts
 
@@ -191,10 +339,13 @@ The `mellowgate` library provides a Python API for gradient estimation in discre
    - A discrete optimization problem is defined using the `DiscreteProblem` class, which combines:
      - A set of branches, each with a function $f_i(\theta)$ and its derivative $f_i'(\theta)$.
      - A logits model that defines the logits $\alpha(\theta)$ and their derivatives $\alpha'(\theta)$.
+     - A customizable probability function to compute probabilities from logits (e.g., softmax or sigmoid).
+     - A sampling function to draw samples from the probability distribution (e.g., Bernoulli).
 
    ```python
    from mellowgate.api.functions import DiscreteProblem, Branch, LogitsModel
 
+   # Define branches
    branches = [
        Branch(
            function=lambda th: float(np.cos(th)),
@@ -206,50 +357,34 @@ The `mellowgate` library provides a Python API for gradient estimation in discre
        )
    ]
 
+   # Define a custom sigmoid probability function
+   def sigmoid(logits):
+       return 1 / (1 + np.exp(-logits))
+
+   # Define a custom Bernoulli sampling function
+   def bernoulli_sampling(probabilities):
+       return np.random.choice(len(probabilities), p=probabilities)
+
+   # Create a logits model with sigmoid probabilities
    logits_model = LogitsModel(
        logits_function=lambda th: alpha * th,
-       logits_derivative_function=lambda th: alpha
+       logits_derivative_function=lambda th: alpha,
+       probability_function=sigmoid,  # Use sigmoid for probabilities
    )
 
-   problem = DiscreteProblem(branches=branches, logits_model=logits_model)
+   # Define the discrete problem with Bernoulli sampling
+   problem = DiscreteProblem(
+       branches=branches,
+       logits_model=logits_model,
+       sampling_function=bernoulli_sampling,  # Use Bernoulli sampling
+   )
    ```
 
-2. **Mathematical Formulation**:
-   - The library is designed to solve discrete optimization problems by estimating gradients through stochastic relaxations. Below is the mathematical formulation:
-
-     - **Discrete Optimization Problem**:
-       Given a parameter $\theta$, the goal is to optimize the expected value of a function $f(x; \theta)$ over discrete choices $x \in \{x_1, x_2, \dots, x_N\}$:
-       $$
-       \mathbb{E}[f(x; \theta)] = \sum_{i=1}^N \pi(x_i | \theta) f(x_i; \theta),
-       $$
-       where $\pi(x_i | \theta)$ is the probability of selecting $x_i$.
-
-     - **Logits and Softmax**:
-       The probabilities $\pi(x_i | \theta)$ are modeled using a softmax function over logits $\alpha_i(\theta)$:
-       $$
-       \pi(x_i | \theta) = \frac{\exp(\alpha_i(\theta))}{\sum_{j=1}^N \exp(\alpha_j(\theta))}.
-       $$
-
-     - **Gradient Estimation**:
-       The gradient of the objective with respect to $\theta` is:
-       $$
-       \nabla_\theta \mathbb{E}[f(x; \theta)] = \sum_{i=1}^N \nabla_\theta \pi(x_i | \theta) f(x_i; \theta) + \pi(x_i | \theta) \nabla_\theta f(x_i; \theta).
-       $$
-
-3. **Gradient Estimation Methods**:
-   - The library supports multiple gradient estimation methods:
-     - **Finite Differences**: Approximates the gradient using central differences:
-       $$
-       \nabla_\theta \mathbb{E}[f(\theta)] \approx \frac{f(\theta + \epsilon) - f(\theta - \epsilon)}{2\epsilon}
-       $$
-     - **REINFORCE**: Uses the score function estimator:
-       $$
-       \nabla_\theta \mathbb{E}[f(\theta)] \approx \mathbb{E}[(f(x) - b) \nabla_\theta \log \pi(x|\theta)]
-       $$
-     - **Gumbel-Softmax**: Provides a differentiable relaxation using the Gumbel distribution:
-       $$
-       \nabla_\theta \mathbb{E}[f(\theta)] \approx \mathbb{E}[f(x) \nabla_\theta \pi(x|\theta)]
-       $$
+2. **Gradient Estimation Methods**:
+   - The library implements various gradient estimation methods, configurable per problem instance:
+     - **Finite Differences**: Approximates gradients by perturbing parameters.
+     - **REINFORCE**: Uses Monte Carlo sampling and policy gradients.
+     - **Gumbel-Softmax**: Provides a continuous relaxation of discrete samples.
 
    ```python
    from mellowgate.api.estimators import FiniteDifferenceConfig, ReinforceConfig, GumbelSoftmaxConfig
@@ -259,7 +394,7 @@ The `mellowgate` library provides a Python API for gradient estimation in discre
    gs_config = GumbelSoftmaxConfig(temperature=0.5, num_samples=800)
    ```
 
-4. **Running Experiments**:
+3. **Running Experiments**:
    - Use the `run_parameter_sweep` function to evaluate gradient estimators over a range of parameter values.
 
    ```python
@@ -278,7 +413,7 @@ The `mellowgate` library provides a Python API for gradient estimation in discre
    results = run_parameter_sweep(problem, sweep)
    ```
 
-5. **Visualization**:
+4. **Visualization**:
    - The library provides utilities for visualizing gradient estimates, bias-variance trade-offs, and computational time.
 
    ```python
@@ -316,3 +451,40 @@ Contributions are welcome! Please:
 ## License
 
 [Add license information here]
+
+### Notes on Normalizing Logits
+
+Logits can be normalized using various methods depending on the requirements of the problem. While the softmax function is a common choice, it is not the only option. Below are some alternatives:
+
+- **Softmax Function**:
+  - Converts logits into probabilities that sum to 1.
+  - Formula:
+    $$
+    \pi(k | \theta) = \frac{\exp(\alpha_k)}{\sum_j \exp(\alpha_j)}.
+    $$
+  - Commonly used in multi-class classification problems.
+
+- **Sigmoid Function**:
+  - Normalizes logits independently, producing probabilities for each branch without ensuring they sum to 1.
+  - Formula:
+    $$
+    \sigma(\alpha) = \frac{1}{1 + e^{-\alpha}}.
+    $$
+  - Useful for binary classification or independent probabilities.
+
+- **Temperature-Scaled Softmax**:
+  - A variant of softmax where logits are divided by a temperature parameter $\tau$ before normalization.
+  - Formula:
+    $$
+    \pi(k | \theta) = \frac{\exp(\alpha_k / \tau)}{\sum_j \exp(\alpha_j / \tau)}.
+    $$
+  - Lower $\tau$ sharpens the distribution, while higher $\tau$ smoothens it.
+
+- **Sparsemax**:
+  - Produces sparse probability distributions, where some probabilities are exactly zero.
+  - Useful in applications like attention mechanisms where sparsity is desired.
+
+- **Custom Normalization**:
+  - In some cases, a custom normalization function may be designed to meet specific requirements of the problem.
+
+Each method has its own advantages and is suited for different scenarios. The choice of normalization depends on the nature of the discrete optimization problem and the desired properties of the probability distribution.

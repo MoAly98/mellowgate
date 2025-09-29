@@ -64,7 +64,6 @@ def finite_difference_gradient(
         evaluation point, making it stochastic. The accuracy depends on both
         the step size and number of samples.
     """
-    random_generator = discrete_problem.random_generator
 
     def _monte_carlo_expectation(theta: float) -> float:
         """
@@ -76,20 +75,10 @@ def finite_difference_gradient(
         Returns:
             Monte Carlo estimate of the expectation.
         """
-        # Get probability distribution over discrete choices
-        choice_probabilities = discrete_problem.compute_probabilities(theta)
-
-        # Sample discrete choices according to probabilities
-        sampled_choice_indices = random_generator.choice(
-            discrete_problem.num_branches,
-            size=config.num_samples,
-            p=choice_probabilities,
+        sampled_values = discrete_problem.compute_stochastic_values(
+            theta, num_samples=config.num_samples
         )
-
-        # Evaluate function at sampled choices and compute empirical mean
-        function_values_at_choices = discrete_problem.compute_function_values(theta)
-        sampled_function_values = function_values_at_choices[sampled_choice_indices]
-        return float(np.mean(sampled_function_values))
+        return float(np.mean(sampled_values))
 
     # Evaluate expectations at perturbed parameter values
     expectation_at_plus = _monte_carlo_expectation(parameter_value + config.step_size)
@@ -225,9 +214,8 @@ def reinforce_gradient(
     score_function_center = float(np.dot(choice_probabilities, logits_gradients))
 
     # Sample discrete choices according to current policy
-    random_generator = discrete_problem.random_generator
-    sampled_choice_indices = random_generator.choice(
-        discrete_problem.num_branches, size=config.num_samples, p=choice_probabilities
+    sampled_choice_indices = discrete_problem.sample_branch(
+        parameter_value, num_samples=config.num_samples
     )
 
     # Compute or update baseline for variance reduction
@@ -302,13 +290,7 @@ def gumbel_softmax_gradient(
     """
     Estimate the gradient using the Gumbel-Softmax reparameterization trick.
 
-    The Gumbel-Softmax method provides a differentiable relaxation of discrete
-    sampling by adding Gumbel noise to logits and applying temperature-scaled
-    softmax. This enables backpropagation through discrete decisions.
-
-    The gradient estimator combines:
-    1. Pathwise gradients (when available): ∇θ f(x)
-    2. Reparameterization gradients: f(x) * ∇θ π(x|θ)
+    Vectorized version for improved performance.
 
     Args:
         discrete_problem: The discrete optimization problem containing the
@@ -322,13 +304,6 @@ def gumbel_softmax_gradient(
     Raises:
         ValueError: If the logits model does not provide gradient information
             (dlogits_dtheta) required for reparameterization.
-
-    Notes:
-        - When use_straight_through_estimator=True, uses discrete sampling
-          in forward pass but continuous gradients in backward pass
-        - Temperature controls the trade-off between discrete and continuous
-          behavior
-        - Requires differentiable logits model for reparameterization
     """
     # Validate that we have the required gradient information
     if discrete_problem.logits_model.logits_derivative_function is None:
@@ -350,57 +325,46 @@ def gumbel_softmax_gradient(
     if pathwise_gradients is not None:
         pathwise_gradients = np.asarray(pathwise_gradients)
 
-    # Collect gradient estimates across multiple samples
-    gradient_estimates = []
+    # Generate all Gumbel noise samples in a single batch
+    gumbel_noise = sample_gumbel(
+        (config.num_samples, discrete_problem.num_branches), np.random.default_rng(0)
+    )
 
-    for sample_idx in range(config.num_samples):
-        # Sample Gumbel noise for reparameterization
-        gumbel_noise = np.asarray(
-            sample_gumbel(
-                discrete_problem.num_branches, discrete_problem.random_generator
-            )
-        )
+    # Compute Gumbel-perturbed logits for all samples
+    perturbed_logits = logits + gumbel_noise  # Shape: (num_samples, num_branches)
 
-        # Compute Gumbel-perturbed logits
-        perturbed_logits = logits + gumbel_noise  # type: ignore
+    # Compute softmax weights for all samples
+    continuous_weights = softmax(
+        perturbed_logits / config.temperature
+    )  # Removed axis parameter
 
-        # Compute pathwise gradient contribution
-        pathwise_contribution = 0.0
+    # Compute pathwise gradient contributions (if available)
+    pathwise_contribution = 0.0
+    if pathwise_gradients is not None:
         if config.use_straight_through_estimator:
             # STE: Use discrete sampling but continuous gradients
-            best_choice_index = int(np.argmax(perturbed_logits))
-            if pathwise_gradients is not None:
-                pathwise_contribution = pathwise_gradients[best_choice_index]
+            best_choice_indices = np.argmax(
+                perturbed_logits, axis=1
+            )  # Shape: (num_samples,)
+            pathwise_contribution = pathwise_gradients[best_choice_indices]
         else:
             # Continuous relaxation using softmax
-            continuous_weights = softmax(perturbed_logits / config.temperature)
-            if pathwise_gradients is not None:
-                pathwise_contribution = float(
-                    np.dot(continuous_weights, pathwise_gradients)
-                )
+            pathwise_contribution = np.dot(continuous_weights, pathwise_gradients)
 
-        # Compute reparameterization gradient contribution
-        # This term captures how the discrete choice probabilities change with θ
-        continuous_weights = softmax(perturbed_logits / config.temperature)
+    # Compute reparameterization gradient contributions
+    mean_logits_gradient = np.dot(
+        continuous_weights, logits_gradients
+    )  # Shape: (num_samples,)
+    softmax_gradient = (
+        continuous_weights * (logits_gradients - mean_logits_gradient[:, np.newaxis])
+    ) / config.temperature  # Shape: (num_samples, num_branches)
 
-        # Compute weighted average of logits gradients
-        mean_logits_gradient = float(np.dot(continuous_weights, logits_gradients))
+    reparameterization_contribution = np.sum(
+        function_values * softmax_gradient, axis=1
+    )  # Shape: (num_samples,)
 
-        # Compute softmax gradient:
-        # ∇θ softmax = softmax * (∇θ logits - mean_∇θ_logits) / τ
-        softmax_gradient = (
-            continuous_weights
-            * (logits_gradients - mean_logits_gradient)  # type: ignore
-        ) / config.temperature
-
-        # Weight by function values to get reparameterization term
-        reparameterization_contribution = float(
-            np.sum(function_values * softmax_gradient)
-        )
-
-        # Combine both contributions for this sample
-        total_gradient = pathwise_contribution + reparameterization_contribution
-        gradient_estimates.append(total_gradient)
+    # Combine pathwise and reparameterization contributions
+    total_gradient_terms = pathwise_contribution + reparameterization_contribution
 
     # Return empirical mean as final gradient estimate
-    return float(np.mean(gradient_estimates))
+    return float(np.mean(total_gradient_terms))
