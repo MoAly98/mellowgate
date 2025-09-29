@@ -1,3 +1,14 @@
+"""Data structures for storing and managing experimental results.
+
+This module provides containers for organizing results from gradient estimation
+experiments. The ResultsContainer class offers a structured way to store
+gradients, metadata, and experimental parameters, making it easy to analyze
+and compare different estimation methods.
+
+The container supports adding results incrementally and provides convenient
+access patterns for downstream analysis and visualization.
+"""
+
 from dataclasses import dataclass
 from typing import Dict, Optional
 

@@ -1,8 +1,16 @@
-"""Experimental framework for running gradient estimation sweeps.
+"""Experimental framework for running parameter sweeps and comparing estimators.
 
-This module provides tools for conducting systematic experiments with different
-gradient estimation methods across parameter ranges, collecting statistics,
-and timing information for performance analysis.
+This module provides tools for systematically evaluating gradient estimation
+methods across different parameter values and configurations. The main components
+allow users to:
+
+- Define parameter sweeps with multiple theta values
+- Configure multiple gradient estimators for comparison
+- Run experiments with statistical repetitions
+- Collect and organize results for analysis
+
+The framework is designed to facilitate reproducible research and benchmarking
+of different gradient estimation approaches on discrete optimization problems.
 """
 
 import time
@@ -64,7 +72,8 @@ def run_parameter_sweep(
 ) -> Dict[str, ResultsContainer]:
     """Execute a parameter sweep experiment with multiple gradient estimators.
 
-    Optimized version with vectorized repetitions and theta values.
+    Fully vectorized version that processes all theta values at once for
+    maximum computational efficiency.
 
     Args:
         discrete_problem: The discrete optimization problem to analyze.
@@ -76,22 +85,22 @@ def run_parameter_sweep(
     """
     if sweep_config.estimator_configs is None:
         logger.error("Sweep estimator_configs is None. Nothing to run.")
-        return {}  # Return an empty dictionary to match the updated return type
+        return {}
 
     logger.info(
-        "Starting sweep over estimators: %s",
+        "Starting vectorized sweep over estimators: %s",
         list(sweep_config.estimator_configs.keys()),
     )
 
     results_containers = {}
 
-    # Compute discrete distributions independent of estimators
+    # Compute discrete distributions for all theta values at once
     discrete_distribution = discrete_problem.compute_function_values_deterministic(
         sweep_config.theta_values
     )
 
     for estimator_name, estimator_spec in sweep_config.estimator_configs.items():
-        logger.info(f"Running estimator: {estimator_name}")
+        logger.info(f"Running vectorized estimator: {estimator_name}")
 
         estimator_config = estimator_spec["cfg"]
         estimator_state = estimator_spec.get("state", None)
@@ -99,94 +108,84 @@ def run_parameter_sweep(
         # Start timing for the entire batch
         start_time = time.time()
 
-        # Vectorized computation for all repetitions and theta values
-        if estimator_name == "fd":
-            gradient_samples = np.array(
-                [
-                    [
-                        finite_difference_gradient(
-                            discrete_problem, float(theta), estimator_config
-                        )
-                        for theta in sweep_config.theta_values
-                    ]
-                    for _ in range(sweep_config.num_repetitions)
-                ]
-            )
-        elif estimator_name == "reinforce":
-            if not isinstance(estimator_state, ReinforceState):
-                logger.error("State for 'reinforce' must be a ReinforceState instance.")
-                raise TypeError(
-                    "State for 'reinforce' must be a ReinforceState instance."
+        # Vectorized computation: run multiple repetitions using the vectorized API
+        gradient_samples = []
+
+        for rep in range(sweep_config.num_repetitions):
+            # Determine estimator type from name
+            if estimator_name == "fd":
+                # Process all theta values at once
+                rep_gradients = finite_difference_gradient(
+                    discrete_problem, sweep_config.theta_values, estimator_config
                 )
-            gradient_samples = np.array(
-                [
-                    [
-                        reinforce_gradient(
-                            discrete_problem,
-                            float(theta),
-                            estimator_config,
-                            estimator_state,
-                        )
-                        for theta in sweep_config.theta_values
-                    ]
-                    for _ in range(sweep_config.num_repetitions)
-                ]
-            )
-        elif estimator_name == "gs":
-            gradient_samples = np.array(
-                [
-                    [
-                        gumbel_softmax_gradient(
-                            discrete_problem, float(theta), estimator_config
-                        )
-                        for theta in sweep_config.theta_values
-                    ]
-                    for _ in range(sweep_config.num_repetitions)
-                ]
-            )
+            elif estimator_name == "reinforce":
+                if not isinstance(estimator_state, ReinforceState):
+                    logger.error(
+                        "State for 'reinforce' must be a ReinforceState instance."
+                    )
+                    raise TypeError(
+                        "State for 'reinforce' must be a ReinforceState instance."
+                    )
+                # Process all theta values at once
+                rep_gradients = reinforce_gradient(
+                    discrete_problem,
+                    sweep_config.theta_values,
+                    estimator_config,
+                    estimator_state,
+                )
+            elif estimator_name == "gs":
+                # Process all theta values at once
+                rep_gradients = gumbel_softmax_gradient(
+                    discrete_problem, sweep_config.theta_values, estimator_config
+                )
+            else:
+                logger.error(f"Unknown estimator: {estimator_name}")
+                raise ValueError(f"Unknown estimator: {estimator_name}")
+
+            gradient_samples.append(rep_gradients)
+
+        # Convert to numpy array: shape (num_repetitions, num_theta_values)
+        if len(gradient_samples) > 0:
+            gradient_samples = np.array(gradient_samples)
+            # Compute statistics across repetitions (axis=0)
+            sample_mean = gradient_samples.mean(axis=0)  # Mean across repetitions
+            sample_std = gradient_samples.std(axis=0, ddof=1)  # Std across repetitions
         else:
-            logger.error(f"Unknown estimator: {estimator_name}")
-            raise ValueError(f"Unknown estimator: {estimator_name}")
+            # Handle zero repetitions case
+            theta_shape = sweep_config.theta_values.shape
+            sample_mean = np.full(theta_shape, np.nan)
+            sample_std = np.full(theta_shape, np.nan)
 
         # Record timing for the entire batch
         elapsed_time = time.time() - start_time
 
-        # Convert elapsed time to numpy array for consistency
-        times_array = np.full(
-            len(sweep_config.theta_values),
-            elapsed_time / len(sweep_config.theta_values),
-        )
-
-        # Compute statistics across repetitions
-        sample_mean = gradient_samples.mean(axis=0)  # Mean across repetitions
-        sample_std = gradient_samples.std(axis=0, ddof=1)  # Std across repetitions
+        # Compute timing per theta value for backwards compatibility
+        if len(sweep_config.theta_values) > 0:
+            times_array = np.full(
+                len(sweep_config.theta_values),
+                elapsed_time / len(sweep_config.theta_values),
+            )
+        else:
+            times_array = np.array([])
 
         # Log total time for the current estimator
         logger.info(
-            f"Finished estimator: {estimator_name}, Total Time: {elapsed_time:.2f}s"
+            f"Finished vectorized estimator: {estimator_name}, "
+            f"Total Time: {elapsed_time:.2f}s"
         )
 
-        # Compute sampled branch indices for each theta value
-        sampled_branch_indices = np.array(
-            [
-                discrete_problem.sample_branch(
-                    theta, num_samples=sweep_config.num_repetitions
-                )
-                for theta in sweep_config.theta_values
-            ]
+        # Compute sampled branch indices for each theta value (vectorized)
+        sampled_branch_indices = discrete_problem.sample_branch(
+            sweep_config.theta_values, num_samples=sweep_config.num_repetitions
         )
 
-        # Compute expectation values of the function itself
-        expectation_values = np.array(
-            [
-                discrete_problem.compute_expected_value(theta)
-                for theta in sweep_config.theta_values
-            ]
+        # Compute expectation values of the function itself (vectorized)
+        expectation_values = discrete_problem.compute_expected_value(
+            sweep_config.theta_values
         )
 
-        # Store the most repeated indices in ResultsContainer
+        # Store the sampled indices in ResultsContainer
         sampled_points = {"sampled_branch_indices": sampled_branch_indices}
-        print(sampled_points)
 
         # Store results for this estimator
         results_containers[estimator_name] = ResultsContainer(
@@ -195,7 +194,7 @@ def run_parameter_sweep(
                     "theta": sweep_config.theta_values.copy(),
                     "mean": sample_mean,
                     "std": sample_std,
-                    "time": times_array,  # Use numpy array
+                    "time": times_array,
                 }
             },
             theta_values=sweep_config.theta_values,
@@ -204,5 +203,5 @@ def run_parameter_sweep(
             sampled_points=sampled_points,
         )
 
-    logger.info("Sweep complete.")
-    return results_containers  # Updated return type in docstring
+    logger.info("Vectorized sweep complete.")
+    return results_containers

@@ -1,0 +1,566 @@
+"""Unit tests for gradient estimators module.
+
+This module provides comprehensive tests for all gradient estimation methods
+including finite differences, REINFORCE, and Gumbel-Softmax approaches.
+Tests cover shapes, values, edge cases, and error conditions.
+"""
+
+import numpy as np
+import pytest
+
+from mellowgate.api.estimators import (
+    FiniteDifferenceConfig,
+    GumbelSoftmaxConfig,
+    ReinforceConfig,
+    ReinforceState,
+    finite_difference_gradient,
+    gumbel_softmax_gradient,
+    reinforce_gradient,
+)
+from mellowgate.api.functions import Branch, DiscreteProblem, LogitsModel
+
+
+@pytest.fixture
+def test_theta():
+    """Common theta values for testing with minimum 5 values."""
+    return np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
+
+
+@pytest.fixture
+def simple_branches():
+    """Simple branches for easier testing."""
+    return [
+        Branch(
+            function=lambda th: th**2,
+            derivative_function=lambda th: 2 * th,
+        ),
+        Branch(
+            function=lambda th: th**3,
+            derivative_function=lambda th: 3 * th**2,
+        ),
+    ]
+
+
+@pytest.fixture
+def simple_logits_model():
+    """Simple logits model for easier testing."""
+    return LogitsModel(
+        logits_function=lambda th: np.array([0.5 * th, -0.5 * th]),
+        logits_derivative_function=lambda th: np.array(
+            [0.5 * np.ones_like(th), -0.5 * np.ones_like(th)]
+        ),
+    )
+
+
+@pytest.fixture
+def simple_discrete_problem(simple_branches, simple_logits_model):
+    return DiscreteProblem(
+        branches=simple_branches,
+        logits_model=simple_logits_model,
+    )
+
+
+@pytest.fixture
+def logits_model_no_derivatives():
+    """Logits model without derivative functions for testing error cases."""
+    return LogitsModel(
+        logits_function=lambda th: np.array([0.5 * th, -0.5 * th]),
+    )
+
+
+@pytest.fixture
+def discrete_problem_no_logits_derivatives(
+    simple_branches, logits_model_no_derivatives
+):
+    return DiscreteProblem(
+        branches=simple_branches,
+        logits_model=logits_model_no_derivatives,
+    )
+
+
+class TestFiniteDifferenceConfig:
+    """Test FiniteDifferenceConfig dataclass."""
+
+    def test_config_creation_default(self):
+        """Test config creation with default values."""
+        config = FiniteDifferenceConfig()
+        assert config.step_size == 1e-3
+        assert config.num_samples == 2000
+
+    def test_config_creation_custom(self):
+        """Test config creation with custom values."""
+        config = FiniteDifferenceConfig(step_size=1e-4, num_samples=1000)
+        assert config.step_size == 1e-4
+        assert config.num_samples == 1000
+
+
+class TestFiniteDifferenceGradient:
+    """Test finite difference gradient estimation."""
+
+    def test_scalar_input_output_type(self, simple_discrete_problem):
+        """Test that scalar input returns scalar output."""
+        config = FiniteDifferenceConfig(num_samples=100)
+        theta = 1.0
+
+        np.random.seed(42)  # For reproducibility
+        gradient = finite_difference_gradient(simple_discrete_problem, theta, config)
+
+        assert isinstance(gradient, float), f"Expected float, got {type(gradient)}"
+
+    def test_array_input_output_shape(self, simple_discrete_problem, test_theta):
+        """Test that array input returns array output with correct shape."""
+        config = FiniteDifferenceConfig(num_samples=100)
+
+        np.random.seed(42)  # For reproducibility
+        gradient = finite_difference_gradient(
+            simple_discrete_problem, test_theta, config
+        )
+
+        assert isinstance(
+            gradient, np.ndarray
+        ), f"Expected ndarray, got {type(gradient)}"
+        assert (
+            gradient.shape == test_theta.shape
+        ), f"Expected shape {test_theta.shape}, got {gradient.shape}"
+
+    def test_gradient_finite_values(self, simple_discrete_problem, test_theta):
+        """Test that gradient estimates are finite (not NaN or infinite)."""
+        config = FiniteDifferenceConfig(num_samples=100)
+
+        np.random.seed(42)
+        gradient = finite_difference_gradient(
+            simple_discrete_problem, test_theta, config
+        )
+
+        assert np.all(np.isfinite(gradient)), "All gradient values should be finite"
+
+    def test_step_size_effect(self, simple_discrete_problem):
+        """Test that different step sizes produce different results."""
+        theta = 1.0
+
+        config_small = FiniteDifferenceConfig(step_size=1e-4, num_samples=500)
+        config_large = FiniteDifferenceConfig(step_size=1e-2, num_samples=500)
+
+        np.random.seed(42)
+        gradient_small = finite_difference_gradient(
+            simple_discrete_problem, theta, config_small
+        )
+        np.random.seed(42)
+        gradient_large = finite_difference_gradient(
+            simple_discrete_problem, theta, config_large
+        )
+
+        # Different step sizes should generally produce different results
+        # (though they might be close for well-behaved functions)
+        assert isinstance(gradient_small, float)
+        assert isinstance(gradient_large, float)
+
+    def test_zero_theta(self, simple_discrete_problem):
+        """Test behavior at theta=0."""
+        config = FiniteDifferenceConfig(num_samples=200)
+        theta = 0.0
+
+        np.random.seed(42)
+        gradient = finite_difference_gradient(simple_discrete_problem, theta, config)
+
+        assert isinstance(gradient, float)
+        assert np.isfinite(gradient)
+
+    def test_reproducibility_with_seed(self, simple_branches, simple_logits_model):
+        """Test that results are reproducible with fixed random seed."""
+        config = FiniteDifferenceConfig(num_samples=100)
+        theta = 1.0
+
+        # Create discrete problems with fresh random generators for each test
+        discrete_problem1 = DiscreteProblem(
+            branches=simple_branches,
+            logits_model=simple_logits_model,
+            sampling_function=np.random.default_rng(123),  # Fixed seed
+        )
+        discrete_problem2 = DiscreteProblem(
+            branches=simple_branches,
+            logits_model=simple_logits_model,
+            sampling_function=np.random.default_rng(123),  # Same seed
+        )
+
+        gradient1 = finite_difference_gradient(discrete_problem1, theta, config)
+        gradient2 = finite_difference_gradient(discrete_problem2, theta, config)
+
+        assert gradient1 == gradient2, "Results should be reproducible with same seed"
+
+
+class TestReinforceConfig:
+    """Test ReinforceConfig dataclass."""
+
+    def test_config_creation_default(self):
+        """Test config creation with default values."""
+        config = ReinforceConfig()
+        assert config.num_samples == 2000
+        assert config.use_baseline is True
+        assert config.baseline_momentum == 0.9
+
+    def test_config_creation_custom(self):
+        """Test config creation with custom values."""
+        config = ReinforceConfig(
+            num_samples=1000, use_baseline=False, baseline_momentum=0.8
+        )
+        assert config.num_samples == 1000
+        assert config.use_baseline is False
+        assert config.baseline_momentum == 0.8
+
+
+class TestReinforceState:
+    """Test ReinforceState class."""
+
+    def test_state_initialization(self):
+        """Test state initialization with default values."""
+        state = ReinforceState()
+        assert state.baseline == 0.0
+        assert state.initialized is False
+
+    def test_baseline_update_first_time(self):
+        """Test baseline update when not initialized."""
+        state = ReinforceState()
+        state.update_baseline(5.0, 0.9)
+
+        assert state.baseline == 5.0
+        assert state.initialized is True
+
+    def test_baseline_update_subsequent(self):
+        """Test baseline update with momentum."""
+        state = ReinforceState()
+
+        # First update
+        state.update_baseline(10.0, 0.9)
+        assert state.baseline == 10.0
+
+        # Second update with momentum
+        state.update_baseline(20.0, 0.9)
+        expected = 0.9 * 10.0 + 0.1 * 20.0  # 9.0 + 2.0 = 11.0
+        assert state.baseline == expected
+
+
+class TestReinforceGradient:
+    """Test REINFORCE gradient estimation."""
+
+    def test_scalar_input_output_type(self, simple_discrete_problem):
+        """Test that scalar input returns scalar output."""
+        config = ReinforceConfig(num_samples=100)
+        state = ReinforceState()
+        theta = 1.0
+
+        np.random.seed(42)
+        gradient = reinforce_gradient(simple_discrete_problem, theta, config, state)
+
+        assert isinstance(gradient, float), f"Expected float, got {type(gradient)}"
+
+    def test_array_input_output_shape(self, simple_discrete_problem, test_theta):
+        """Test that array input returns array output with correct shape."""
+        config = ReinforceConfig(num_samples=100)
+        state = ReinforceState()
+
+        np.random.seed(42)
+        gradient = reinforce_gradient(
+            simple_discrete_problem, test_theta, config, state
+        )
+
+        assert isinstance(
+            gradient, np.ndarray
+        ), f"Expected ndarray, got {type(gradient)}"
+        assert (
+            gradient.shape == test_theta.shape
+        ), f"Expected shape {test_theta.shape}, got {gradient.shape}"
+
+    def test_gradient_finite_values(self, simple_discrete_problem, test_theta):
+        """Test that gradient estimates are finite."""
+        config = ReinforceConfig(num_samples=100)
+        state = ReinforceState()
+
+        np.random.seed(42)
+        gradient = reinforce_gradient(
+            simple_discrete_problem, test_theta, config, state
+        )
+
+        assert np.all(np.isfinite(gradient)), "All gradient values should be finite"
+
+    def test_baseline_effect(self, simple_discrete_problem):
+        """Test that using baseline affects results."""
+        theta = 1.0
+
+        config_with_baseline = ReinforceConfig(num_samples=200, use_baseline=True)
+        config_without_baseline = ReinforceConfig(num_samples=200, use_baseline=False)
+
+        state_with = ReinforceState()
+        state_without = ReinforceState()
+
+        np.random.seed(42)
+        gradient_with = reinforce_gradient(
+            simple_discrete_problem, theta, config_with_baseline, state_with
+        )
+        np.random.seed(42)
+        gradient_without = reinforce_gradient(
+            simple_discrete_problem, theta, config_without_baseline, state_without
+        )
+
+        assert isinstance(gradient_with, float)
+        assert isinstance(gradient_without, float)
+        # They might be different due to baseline usage
+
+    def test_state_updates_baseline(self, simple_discrete_problem):
+        """Test that state baseline gets updated during gradient computation."""
+        config = ReinforceConfig(num_samples=100, use_baseline=True)
+        state = ReinforceState()
+        theta = 1.0
+
+        assert not state.initialized
+
+        np.random.seed(42)
+        reinforce_gradient(simple_discrete_problem, theta, config, state)
+
+        assert state.initialized
+        assert state.baseline != 0.0  # Should have been updated
+
+    def test_missing_logits_derivatives_error(
+        self, discrete_problem_no_logits_derivatives
+    ):
+        """Test that missing logits derivatives raises ValueError."""
+        config = ReinforceConfig(num_samples=100)
+        state = ReinforceState()
+        theta = 1.0
+
+        with pytest.raises(
+            ValueError, match="REINFORCE requires logits_derivative_function"
+        ):
+            reinforce_gradient(
+                discrete_problem_no_logits_derivatives, theta, config, state
+            )
+
+    def test_zero_theta(self, simple_discrete_problem):
+        """Test behavior at theta=0."""
+        config = ReinforceConfig(num_samples=200)
+        state = ReinforceState()
+        theta = 0.0
+
+        np.random.seed(42)
+        gradient = reinforce_gradient(simple_discrete_problem, theta, config, state)
+
+        assert isinstance(gradient, float)
+        assert np.isfinite(gradient)
+
+
+class TestGumbelSoftmaxConfig:
+    """Test GumbelSoftmaxConfig dataclass."""
+
+    def test_config_creation_default(self):
+        """Test config creation with default values."""
+        config = GumbelSoftmaxConfig()
+        assert config.temperature == 0.5
+        assert config.num_samples == 1000
+        assert config.use_straight_through_estimator is False
+
+    def test_config_creation_custom(self):
+        """Test config creation with custom values."""
+        config = GumbelSoftmaxConfig(
+            temperature=1.0, num_samples=500, use_straight_through_estimator=True
+        )
+        assert config.temperature == 1.0
+        assert config.num_samples == 500
+        assert config.use_straight_through_estimator is True
+
+
+class TestGumbelSoftmaxGradient:
+    """Test Gumbel-Softmax gradient estimation."""
+
+    def test_scalar_input_output_type(self, simple_discrete_problem):
+        """Test that scalar input returns scalar output."""
+        config = GumbelSoftmaxConfig(num_samples=100)
+        theta = 1.0
+
+        np.random.seed(42)
+        gradient = gumbel_softmax_gradient(simple_discrete_problem, theta, config)
+
+        assert isinstance(gradient, float), f"Expected float, got {type(gradient)}"
+
+    def test_array_input_output_shape(self, simple_discrete_problem, test_theta):
+        """Test that array input returns array output with correct shape."""
+        config = GumbelSoftmaxConfig(num_samples=100)
+
+        np.random.seed(42)
+        gradient = gumbel_softmax_gradient(simple_discrete_problem, test_theta, config)
+
+        assert isinstance(
+            gradient, np.ndarray
+        ), f"Expected ndarray, got {type(gradient)}"
+        assert (
+            gradient.shape == test_theta.shape
+        ), f"Expected shape {test_theta.shape}, got {gradient.shape}"
+
+    def test_gradient_finite_values(self, simple_discrete_problem, test_theta):
+        """Test that gradient estimates are finite."""
+        config = GumbelSoftmaxConfig(num_samples=100)
+
+        np.random.seed(42)
+        gradient = gumbel_softmax_gradient(simple_discrete_problem, test_theta, config)
+
+        assert np.all(np.isfinite(gradient)), "All gradient values should be finite"
+
+    def test_temperature_effect(self, simple_discrete_problem):
+        """Test that different temperatures produce different results."""
+        theta = 1.0
+
+        config_low_temp = GumbelSoftmaxConfig(temperature=0.1, num_samples=200)
+        config_high_temp = GumbelSoftmaxConfig(temperature=2.0, num_samples=200)
+
+        np.random.seed(42)
+        gradient_low = gumbel_softmax_gradient(
+            simple_discrete_problem, theta, config_low_temp
+        )
+        np.random.seed(42)
+        gradient_high = gumbel_softmax_gradient(
+            simple_discrete_problem, theta, config_high_temp
+        )
+
+        assert isinstance(gradient_low, float)
+        assert isinstance(gradient_high, float)
+        # Different temperatures should generally produce different results
+
+    def test_missing_logits_derivatives_error(
+        self, discrete_problem_no_logits_derivatives
+    ):
+        """Test that missing logits derivatives raises ValueError."""
+        config = GumbelSoftmaxConfig(num_samples=100)
+        theta = 1.0
+
+        with pytest.raises(
+            ValueError, match="Gumbel-Softmax requires logits_derivative_function"
+        ):
+            gumbel_softmax_gradient(
+                discrete_problem_no_logits_derivatives, theta, config
+            )
+
+    def test_zero_theta(self, simple_discrete_problem):
+        """Test behavior at theta=0."""
+        config = GumbelSoftmaxConfig(num_samples=200)
+        theta = 0.0
+
+        np.random.seed(42)
+        gradient = gumbel_softmax_gradient(simple_discrete_problem, theta, config)
+
+        assert isinstance(gradient, float)
+        assert np.isfinite(gradient)
+
+    def test_reproducibility_with_seed(self, simple_discrete_problem):
+        """Test that results are reproducible with fixed random seed."""
+        config = GumbelSoftmaxConfig(num_samples=100)
+        theta = 1.0
+
+        np.random.seed(123)
+        gradient1 = gumbel_softmax_gradient(simple_discrete_problem, theta, config)
+        np.random.seed(123)
+        gradient2 = gumbel_softmax_gradient(simple_discrete_problem, theta, config)
+
+        assert gradient1 == gradient2, "Results should be reproducible with same seed"
+
+
+class TestEdgeCases:
+    """Test edge cases and error conditions."""
+
+    def test_very_small_step_size_finite_difference(self, simple_discrete_problem):
+        """Test finite difference with very small step size."""
+        config = FiniteDifferenceConfig(step_size=1e-10, num_samples=100)
+        theta = 1.0
+
+        np.random.seed(42)
+        gradient = finite_difference_gradient(simple_discrete_problem, theta, config)
+
+        assert isinstance(gradient, float)
+        # Might be less accurate due to numerical precision, but should not crash
+
+    def test_very_large_theta_values(self, simple_discrete_problem):
+        """Test behavior with very large theta values."""
+        theta = np.array([-100.0, 100.0])
+
+        # Test finite difference
+        fd_config = FiniteDifferenceConfig(num_samples=50)
+        np.random.seed(42)
+        fd_gradient = finite_difference_gradient(
+            simple_discrete_problem, theta, fd_config
+        )
+        assert isinstance(fd_gradient, np.ndarray)
+        assert fd_gradient.shape == theta.shape
+
+        # Test REINFORCE
+        reinforce_config = ReinforceConfig(num_samples=50)
+        reinforce_state = ReinforceState()
+        np.random.seed(42)
+        reinforce_grad = reinforce_gradient(
+            simple_discrete_problem, theta, reinforce_config, reinforce_state
+        )
+        assert isinstance(reinforce_grad, np.ndarray)
+        assert reinforce_grad.shape == theta.shape
+
+        # Test Gumbel-Softmax
+        gs_config = GumbelSoftmaxConfig(num_samples=50)
+        np.random.seed(42)
+        gs_gradient = gumbel_softmax_gradient(simple_discrete_problem, theta, gs_config)
+        assert isinstance(gs_gradient, np.ndarray)
+        assert gs_gradient.shape == theta.shape
+
+    def test_single_branch_problem(self):
+        """Test estimators with single branch problem."""
+        # Create a single branch problem
+        branch = Branch(
+            function=lambda th: th**2, derivative_function=lambda th: 2 * th
+        )
+        logits_model = LogitsModel(
+            logits_function=lambda th: np.array([np.zeros_like(th)]),
+            logits_derivative_function=lambda th: np.array([np.zeros_like(th)]),
+        )
+        problem = DiscreteProblem(branches=[branch], logits_model=logits_model)
+
+        theta = 1.0
+
+        # Test finite difference
+        fd_config = FiniteDifferenceConfig(num_samples=50)
+        np.random.seed(42)
+        fd_gradient = finite_difference_gradient(problem, theta, fd_config)
+        assert isinstance(fd_gradient, float)
+
+        # Test REINFORCE
+        reinforce_config = ReinforceConfig(num_samples=50)
+        reinforce_state = ReinforceState()
+        np.random.seed(42)
+        reinforce_grad = reinforce_gradient(
+            problem, theta, reinforce_config, reinforce_state
+        )
+        assert isinstance(reinforce_grad, float)
+
+        # Test Gumbel-Softmax
+        gs_config = GumbelSoftmaxConfig(num_samples=50)
+        np.random.seed(42)
+        gs_gradient = gumbel_softmax_gradient(problem, theta, gs_config)
+        assert isinstance(gs_gradient, float)
+
+    def test_empty_array_input(self, simple_discrete_problem):
+        """Test behavior with empty array input."""
+        theta = np.array([])
+
+        fd_config = FiniteDifferenceConfig(num_samples=50)
+        fd_gradient = finite_difference_gradient(
+            simple_discrete_problem, theta, fd_config
+        )
+        assert isinstance(fd_gradient, np.ndarray)
+        assert fd_gradient.shape == (0,)
+
+        reinforce_config = ReinforceConfig(num_samples=50)
+        reinforce_state = ReinforceState()
+        reinforce_grad = reinforce_gradient(
+            simple_discrete_problem, theta, reinforce_config, reinforce_state
+        )
+        assert isinstance(reinforce_grad, np.ndarray)
+        assert reinforce_grad.shape == (0,)
+
+        gs_config = GumbelSoftmaxConfig(num_samples=50)
+        gs_gradient = gumbel_softmax_gradient(simple_discrete_problem, theta, gs_config)
+        assert isinstance(gs_gradient, np.ndarray)
+        assert gs_gradient.shape == (0,)

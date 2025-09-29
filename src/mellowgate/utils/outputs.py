@@ -1,7 +1,12 @@
-"""Output management utilities for organizing experiment results and plots.
+"""Output management utilities for organizing experimental results.
 
-This module provides a centralized way to manage output directories and file paths
-for experimental results, plots, and other generated content.
+This module provides tools for managing file and directory structures when
+running experiments. The OutputManager class helps create consistent directory
+hierarchies and generates appropriate file paths for saving results, logs,
+and other experimental artifacts.
+
+The utilities ensure reproducible organization of experimental outputs and
+make it easy to locate and manage results from multiple runs.
 """
 
 from pathlib import Path

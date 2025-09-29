@@ -1,6 +1,9 @@
 [project]
 authors = [{name = "maly", email = "mohamedaymanali@gmail.com"}]
-dependencies = []
+dependencies = [
+    "numpy>=2.3.3,<3",
+    "matplotlib>=3.10.6,<4",
+]
 name = "mellowgate"
 requires-python = ">= 3.11"
 version = "0.1.0"
@@ -11,7 +14,7 @@ requires = ["hatchling"]
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
-platforms = ["osx-arm64"]
+platforms = ["osx-arm64", "linux-64", "osx-64", "win-64"]
 
 [tool.pixi.pypi-dependencies]
 mellowgate = { path = ".", editable = true }
@@ -26,6 +29,26 @@ flake8 = "*"
 rich = "*"
 isort = "*"
 pre-commit = "*"
+pytest = ">=8.4.2,<9"
+pytest-cov = "*"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=mellowgate",
+    "--cov-report=term-missing",
+    "--cov-fail-under=1"
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
 
 # Tool configurations
 [tool.black]

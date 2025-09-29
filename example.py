@@ -63,8 +63,15 @@ alpha = np.array([-1.0, 1.0])
 
 # Define a custom softmax probability function
 def softmax(logits):
-    exp_logits = np.exp(logits - np.max(logits))  # Subtract max for numerical stability
-    return np.array(exp_logits / np.sum(exp_logits))
+    """Custom softmax that handles both 1D and 2D inputs."""
+    if logits.ndim == 1:
+        # Single theta case: logits shape (num_branches,)
+        exp_logits = np.exp(logits - np.max(logits))
+        return exp_logits / np.sum(exp_logits)
+    else:
+        # Multiple theta case: logits shape (num_branches, num_theta)
+        exp_logits = np.exp(logits - np.max(logits, axis=0, keepdims=True))
+        return exp_logits / np.sum(exp_logits, axis=0, keepdims=True)
 
 
 def sigmoid(logits):
@@ -79,8 +86,10 @@ def bernoulli_sampling(probabilities):
 
 # Update logits model to use softmax and Bernoulli sampling
 logits_model = LogitsModel(
-    logits_function=lambda th: alpha * th,
-    logits_derivative_function=lambda th: alpha,
+    logits_function=lambda th: alpha[:, np.newaxis]
+    * th,  # Broadcasting: (2, 1) * (N,) -> (2, N)
+    logits_derivative_function=lambda th: alpha[:, np.newaxis]
+    * np.ones_like(th),  # (2, 1) * (N,) -> (2, N)
     probability_function=softmax,  # Use softmax for probabilities
 )
 
