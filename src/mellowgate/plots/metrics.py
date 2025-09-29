@@ -1,11 +1,12 @@
-"""Visualization tools for gradient estimation experiment results.
+"""Visualization tools for gradient estimation performance metrics.
 
-This module provides plotting functions for analyzing and visualizing the
-performance of different gradient estimation methods, including accuracy
-comparisons, bias-variance decomposition, and timing analysis.
+This module provides plotting utilities for analyzing and comparing the
+performance of different gradient estimation methods. The functions help
+visualize convergence properties, variance characteristics, and comparative
+performance across different parameter ranges.
 
-All plotting functions are optimized to work with the vectorized API,
-supporting both scalar and array-based gradient functions.
+The visualizations support experimental analysis and help researchers understand
+the trade-offs between different estimation approaches.
 """
 
 from typing import Callable, Optional, Union

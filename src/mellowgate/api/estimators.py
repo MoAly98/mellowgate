@@ -1,12 +1,16 @@
-"""
-Gradient estimators for discrete optimization problems.
+"""Gradient estimation methods for discrete optimization problems.
 
-This module provides various gradient estimation methods for discrete decision problems,
-including finite differences, REINFORCE, and Gumbel-Softmax approaches. These methods
-enable differentiable optimization of discrete choices through stochastic relaxations.
+This module implements three main approaches for estimating gradients in discrete
+optimization problems where exact gradients may not be available:
 
-All estimators are fully vectorized and support both scalar and array inputs for
-efficient batch processing of multiple parameter values.
+1. Finite Differences: Approximates gradients using numerical differentiation
+2. REINFORCE: Uses policy gradient methods with optional baseline reduction
+3. Gumbel-Softmax: Provides differentiable relaxation of discrete sampling
+
+Each estimator is designed to work with DiscreteProblem instances and supports
+vectorized operations for efficient computation across multiple parameter values.
+The estimators handle the fundamental challenge of computing gradients through
+discrete sampling operations.
 """
 
 from dataclasses import dataclass
@@ -45,63 +49,60 @@ def finite_difference_gradient(
     parameter_value: Union[float, np.ndarray],
     config: FiniteDifferenceConfig,
 ) -> Union[float, np.ndarray]:
-    """
-    Estimate the gradient using finite differences with vectorized operations.
+    """Estimate gradient using finite differences method.
 
-    This method approximates the gradient by evaluating the function at
-    parameter_value + step_size and parameter_value - step_size, then computing
-    the central difference: (f(θ+ε) - f(θ-ε)) / (2ε). Supports both scalar
-    and array inputs for efficient batch processing.
+    Approximates the gradient by evaluating the function at theta + step_size
+    and theta - step_size, then computing the numerical derivative.
 
     Args:
-        discrete_problem (DiscreteProblem): The discrete optimization problem
-            containing the function to differentiate and probability model.
-        parameter_value (Union[float, np.ndarray]): The parameter value(s) θ
-            at which to estimate the gradient. Can be scalar or array.
-        config (FiniteDifferenceConfig): Configuration containing step size
-            and number of Monte Carlo samples.
+        discrete_problem: The discrete optimization problem instance.
+        parameter_value: Parameter value(s) at which to estimate the gradient.
+                        Shape: scalar or (N,) for N parameter values
+        config: Configuration for finite difference estimation.
 
     Returns:
-        Union[float, np.ndarray]: Estimated gradient value(s) at the given
-            parameter(s). Returns scalar for scalar input, array for array input.
+        Union[float, np.ndarray]: Estimated gradient values.
+                                 Shape matches input parameter_value shape.
+                                 Scalar for scalar input, (N,) for array input.
 
-    Notes:
-        The method uses Monte Carlo sampling to estimate expectations at each
-        evaluation point, making it stochastic. The accuracy depends on both
-        the step size and number of samples. All operations are vectorized
-        for computational efficiency.
+    Examples:
+        >>> theta = np.array([0.0, 1.0, 2.0])  # Shape: (3,)
+        >>> gradient = finite_difference_gradient(problem, theta, config)
+        >>> gradient.shape  # (3,)
     """
     # Convert to array for consistent handling
     theta_array = np.asarray(parameter_value)
     is_scalar_input = theta_array.ndim == 0
 
     if is_scalar_input:
-        theta_array = theta_array.reshape(1)
+        theta_array = theta_array.reshape(1)  # Shape: (1,)
 
     def _monte_carlo_expectation(theta: np.ndarray) -> np.ndarray:
-        """
-        Estimate E[f(θ)] using Monte Carlo sampling for array of theta values.
+        """Compute Monte Carlo expectation for given theta values.
 
         Args:
-            theta: Array of parameter values for evaluation.
+            theta: Parameter values, shape: (N,)
 
         Returns:
-            Array of Monte Carlo estimates of the expectations.
+            np.ndarray: Expected values, shape: (N,)
         """
+        # sampled_values shape: (N, num_samples)
         sampled_values = discrete_problem.compute_stochastic_values(
             theta, num_samples=config.num_samples
         )
-        # sampled_values shape: (len(theta), num_samples)
+        # Return shape: (N,) - mean along sample dimension
         return np.mean(sampled_values, axis=1)
 
-    # Evaluate expectations at perturbed parameter values using vectorized operations
+    # Create perturbed theta arrays
+    # All have shape: (N,) where N = len(theta_array)
     theta_plus = theta_array + config.step_size
     theta_minus = theta_array - config.step_size
 
+    # Compute expectations - each has shape: (N,)
     expectation_at_plus = _monte_carlo_expectation(theta_plus)
     expectation_at_minus = _monte_carlo_expectation(theta_minus)
 
-    # Compute central difference approximation using vectorized operations
+    # Finite difference approximation - shape: (N,)
     gradient_estimate = (expectation_at_plus - expectation_at_minus) / (
         2 * config.step_size
     )

@@ -1,17 +1,17 @@
 """Core mathematical functions and problem definitions for discrete optimization.
 
-This module defines the fundamental building blocks for discrete optimization problems,
-including branch functions, logits models, and the complete discrete problem
-formulation with exact gradient computation capabilities. All operations are fully
-vectorized to efficiently handle arrays of theta values without loops, enabling
-high-performance computations for large parameter spaces.
+This module provides the fundamental building blocks for defining and solving
+discrete optimization problems where decisions involve choosing between multiple
+branches or paths. The module implements vectorized operations throughout to
+efficiently handle both single parameter values and arrays of parameters.
 
-Key Features:
-- Vectorized branch functions supporting array-based theta operations
-- Efficient probability computation using vectorized softmax
-- Exact gradient computation with policy gradient theorem
-- Optimized sampling and stochastic value computation
-- Full NumPy array broadcasting support throughout
+The main components are:
+- Branch: Represents a single choice/path with its associated function
+- LogitsModel: Defines probability distributions over branches using logits
+- DiscreteProblem: Complete problem formulation with sampling and gradient computation
+
+All operations support NumPy array broadcasting and are optimized for performance
+with large parameter spaces.
 """
 
 from dataclasses import dataclass
@@ -214,29 +214,31 @@ class DiscreteProblem:
 
         Args:
             theta: Array of parameter values at which to compute probabilities.
-                   Can be 1D array for multiple theta values.
+                   Shape: (N,) for N theta values
 
         Returns:
             np.ndarray: Probability distribution over branches.
-                       Shape (num_branches,) for single theta value.
-                       Shape (num_branches, num_theta) for multiple theta values.
+                       Shape: (num_branches, N) for N theta values
+                       Each column sums to 1.0
 
         Raises:
             ValueError: If the sum of probabilities is not approximately 1 for
                        any theta.
 
         Examples:
-            >>> theta = np.array([0.0, 1.0, 2.0])
+            >>> theta = np.array([0.0, 1.0, 2.0])  # Shape: (3,)
             >>> probs = problem.compute_probabilities(theta)
             >>> probs.shape  # (num_branches, 3)
         """
+        # logits shape: (num_branches, N) where N = len(theta)
         logits = self.logits_model.logits_function(theta)
+
+        # probabilities shape: (num_branches, N)
         probabilities = self.logits_model.probability_function(logits)
 
-        # Ensure the sum of probabilities is approximately 1
-        # For 2D arrays (num_branches, num_theta), check sum along branch
-        # dimension (axis=0)
+        # Validate probability sums along branch dimension (axis=0)
         if probabilities.ndim == 1:
+            # Shape: (num_branches,) - single theta case
             prob_sums = probabilities.sum()
             if not np.isclose(prob_sums, 1.0):
                 raise ValueError(
@@ -244,6 +246,8 @@ class DiscreteProblem:
                     f"Sum is {prob_sums:.4f}."
                 )
         else:
+            # Shape: (num_branches, N) - multiple theta case
+            # prob_sums shape: (N,) - one sum per theta value
             prob_sums = probabilities.sum(axis=0)
             if not np.allclose(prob_sums, 1.0):
                 raise ValueError(
@@ -304,24 +308,26 @@ class DiscreteProblem:
 
         Args:
             theta: The parameter value(s) at which to evaluate functions.
-                   Can be scalar, 1D array, or higher dimensional.
+                   Shape: (N,) for N theta values
 
         Returns:
             np.ndarray: Array of function values.
-                       Shape (num_branches,) for single theta value.
-                       Shape (num_branches, num_theta) for array of theta values.
+                       Shape: (num_branches, N) for N theta values
+                       Each row corresponds to one branch function
 
         Examples:
-            >>> theta = np.array([0.0, 1.0, 2.0])
+            >>> theta = np.array([0.0, 1.0, 2.0])  # Shape: (3,)
             >>> values = problem.compute_function_values(theta)
             >>> values.shape  # (num_branches, 3)
         """
         # Ensure theta is an array for consistent handling
-        theta_array = np.asarray(theta)
+        theta_array = np.asarray(theta)  # Shape: (N,)
 
         results = []
         for branch in self.branches:
+            # Each branch.function(theta_array) returns shape: (N,)
             result = branch.function(theta_array)
+
             # Handle both scalar and array outputs from branch functions
             if np.isscalar(result):
                 result = np.array([result])
@@ -331,6 +337,7 @@ class DiscreteProblem:
                     result = np.array([result])
             results.append(result)
 
+        # Stack results to get shape: (num_branches, N)
         return np.array(results)
 
     def compute_derivative_values(self, theta: np.ndarray) -> Optional[np.ndarray]:
@@ -482,13 +489,14 @@ class DiscreteProblem:
 
         Args:
             theta: Array of parameter values at which to sample.
-                   Can be 1D array for multiple theta values.
+                   Shape: (N,) for N theta values
             num_samples: Number of samples for each theta value.
 
         Returns:
             np.ndarray: Indices of the sampled branches.
-                       Shape (len(theta), num_samples) for multiple theta values.
-                       Shape (num_samples,) for single theta value.
+                       Shape: (N, num_samples) for N theta values
+                       Each row contains samples for one theta value
+                       Values are integers in range [0, num_branches)
 
         Notes:
             Uses the provided sampling function if available, otherwise defaults
@@ -496,25 +504,25 @@ class DiscreteProblem:
             Optimized for computational efficiency with large theta arrays.
 
         Examples:
-            >>> theta = np.array([0.0, 1.0, 2.0])
+            >>> theta = np.array([0.0, 1.0, 2.0])  # Shape: (3,)
             >>> samples = problem.sample_branch(theta, num_samples=100)
             >>> samples.shape  # (3, 100)
         """
+        # probabilities shape: (num_branches, N) where N = len(theta)
         probabilities = self.compute_probabilities(theta)
-        # Shape: (num_branches, len(theta))
 
         match self.sampling_function:
             case func if callable(func):
                 # Case 1: sampling_function is a Callable
-                # Need to handle the callable case - for now, use loop but
-                # optimize later
                 if probabilities.ndim == 1:
-                    # Single theta case
+                    # Single theta case: probabilities shape (num_branches,)
+                    # Output shape: (num_samples,)
                     samples = np.fromiter(
                         (func(probabilities) for _ in range(num_samples)), dtype=int
                     )
                 else:
-                    # Multiple theta case
+                    # Multiple theta case: probabilities shape (num_branches, N)
+                    # Output shape: (N, num_samples)
                     samples = np.array(
                         [
                             np.fromiter(
@@ -525,6 +533,7 @@ class DiscreteProblem:
                         ]
                     )
                 return samples
+
             case generator if isinstance(generator, np.random.Generator):
                 # Case 2: sampling_function is a np.random.Generator - can
                 # vectorize this

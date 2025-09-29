@@ -1,8 +1,12 @@
-"""Visualization tools for discrete problem functions and sampling results.
+"""Visualization functions for discrete optimization problems.
 
-This module provides plotting functions for visualizing discrete optimization
-problems, including combined overlays of expectation values, discrete distributions,
-and sampled points. All functions are optimized for the vectorized API.
+This module provides plotting utilities for visualizing discrete optimization
+problems, their probability distributions, and function behaviors. The functions
+help users understand the structure of their problems and visualize how
+probabilities and function values change across parameter spaces.
+
+The plotting functions integrate with matplotlib and are designed to work
+seamlessly with the core DiscreteProblem class.
 """
 
 import matplotlib.pyplot as plt

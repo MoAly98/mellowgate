@@ -1,7 +1,12 @@
-"""Utility functions for mathematical operations in mellowgate.
+"""Mathematical utility functions for discrete optimization.
 
-This module provides mathematical utility functions commonly used throughout
-the mellowgate library, particularly for discrete optimization problems.
+This module provides core mathematical functions used throughout the mellowgate
+library, particularly for probability computations and numerical operations.
+The functions are implemented with numerical stability in mind and support
+vectorized operations for efficient computation.
+
+Key functions include softmax for converting logits to probabilities, with
+proper handling of edge cases and numerical overflow prevention.
 """
 
 from typing import Union

@@ -1,11 +1,16 @@
-"""Experimental framework for running gradient estimation sweeps.
+"""Experimental framework for running parameter sweeps and comparing estimators.
 
-This module provides tools for conducting systematic experiments with different
-gradient estimation methods across parameter ranges, collecting statistics,
-and timing information for performance analysis.
+This module provides tools for systematically evaluating gradient estimation
+methods across different parameter values and configurations. The main components
+allow users to:
 
-All operations are fully vectorized to efficiently process multiple parameter
-values simultaneously, dramatically improving computational performance.
+- Define parameter sweeps with multiple theta values
+- Configure multiple gradient estimators for comparison
+- Run experiments with statistical repetitions
+- Collect and organize results for analysis
+
+The framework is designed to facilitate reproducible research and benchmarking
+of different gradient estimation approaches on discrete optimization problems.
 """
 
 import time

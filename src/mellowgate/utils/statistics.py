@@ -1,7 +1,12 @@
-"""Statistical utility functions for stochastic gradient estimation.
+"""Statistical utilities for analyzing experimental results.
 
-This module provides statistical sampling functions used in gradient estimation
-algorithms, particularly for generating random variates from various distributions.
+This module provides functions for computing statistical measures and metrics
+commonly used in analyzing the performance of gradient estimation methods.
+The functions support both single estimates and collections of estimates,
+enabling comprehensive analysis of experimental results.
+
+The utilities focus on variance estimation, bias analysis, and other metrics
+relevant to evaluating the quality of gradient estimators.
 """
 
 from typing import Tuple, Union
