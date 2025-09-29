@@ -51,6 +51,10 @@ def softmax(logits: ArrayLike, axis: int = -1) -> np.ndarray:
     """
     logits_array = np.asarray(logits)
 
+    # Handle empty arrays
+    if logits_array.size == 0:
+        return logits_array.astype(float)
+
     # Handle both 1D and multi-dimensional cases
     if logits_array.ndim == 1:
         # Original 1D behavior
