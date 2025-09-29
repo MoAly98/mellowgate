@@ -107,6 +107,7 @@ def run_parameter_sweep(
         gradient_samples = []
 
         for rep in range(sweep_config.num_repetitions):
+            # Determine estimator type from name
             if estimator_name == "fd":
                 # Process all theta values at once
                 rep_gradients = finite_difference_gradient(
@@ -139,20 +140,28 @@ def run_parameter_sweep(
             gradient_samples.append(rep_gradients)
 
         # Convert to numpy array: shape (num_repetitions, num_theta_values)
-        gradient_samples = np.array(gradient_samples)
+        if len(gradient_samples) > 0:
+            gradient_samples = np.array(gradient_samples)
+            # Compute statistics across repetitions (axis=0)
+            sample_mean = gradient_samples.mean(axis=0)  # Mean across repetitions
+            sample_std = gradient_samples.std(axis=0, ddof=1)  # Std across repetitions
+        else:
+            # Handle zero repetitions case
+            theta_shape = sweep_config.theta_values.shape
+            sample_mean = np.full(theta_shape, np.nan)
+            sample_std = np.full(theta_shape, np.nan)
 
         # Record timing for the entire batch
         elapsed_time = time.time() - start_time
 
         # Compute timing per theta value for backwards compatibility
-        times_array = np.full(
-            len(sweep_config.theta_values),
-            elapsed_time / len(sweep_config.theta_values),
-        )
-
-        # Compute statistics across repetitions (axis=0)
-        sample_mean = gradient_samples.mean(axis=0)  # Mean across repetitions
-        sample_std = gradient_samples.std(axis=0, ddof=1)  # Std across repetitions
+        if len(sweep_config.theta_values) > 0:
+            times_array = np.full(
+                len(sweep_config.theta_values),
+                elapsed_time / len(sweep_config.theta_values),
+            )
+        else:
+            times_array = np.array([])
 
         # Log total time for the current estimator
         logger.info(

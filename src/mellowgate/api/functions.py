@@ -277,14 +277,22 @@ class DiscreteProblem:
         """
         if not isinstance(theta, np.ndarray):
             raise ValueError("Theta must be a numpy array.")
-        conditions = [
-            self.generate_threshold_conditions(theta, branch.threshold)
-            for branch in self.branches
-        ]
-        functions = [
-            lambda t, func=branch.function: func(t) for branch in self.branches
-        ]
-        return np.piecewise(theta, conditions, functions)
+
+        # Handle empty theta arrays
+        if theta.size == 0:
+            return np.empty((self.num_branches, 0))
+
+        # Compute function values for each branch at all theta values
+        result = np.zeros((self.num_branches, theta.size))
+
+        for i, branch in enumerate(self.branches):
+            conditions = self.generate_threshold_conditions(theta, branch.threshold)
+            # Where conditions are met, compute function values; otherwise NaN
+            values = np.full_like(theta, np.nan, dtype=float)
+            values[conditions] = branch.function(theta[conditions])
+            result[i, :] = values
+
+        return result
 
     def compute_function_values(self, theta: np.ndarray) -> np.ndarray:
         """Evaluate all branch functions at the given theta values using
@@ -580,6 +588,10 @@ class DiscreteProblem:
         theta_array = np.asarray(theta)
         if theta_array.ndim == 0:  # Handle scalar input
             theta_array = theta_array.reshape(1)
+
+        # Handle empty array input
+        if theta_array.size == 0:
+            return np.empty((0, num_samples))
 
         # Sample branch indices using the custom sampling function
         sampled_branches = self.sample_branch(theta_array, num_samples=num_samples)
