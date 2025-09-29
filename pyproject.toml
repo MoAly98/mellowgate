@@ -26,6 +26,26 @@ flake8 = "*"
 rich = "*"
 isort = "*"
 pre-commit = "*"
+pytest = ">=8.4.2,<9"
+pytest-cov = "*"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=mellowgate",
+    "--cov-report=term-missing",
+    "--cov-fail-under=48"
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
 
 # Tool configurations
 [tool.black]

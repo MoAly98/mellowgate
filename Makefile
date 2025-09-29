@@ -1,5 +1,5 @@
 # Mellowgate Development Makefile
-.PHONY: help install lint format test clean pre-commit setup-dev
+.PHONY: help install lint format test test-cov clean pre-commit setup-dev
 
 # Default target
 help:
@@ -14,9 +14,9 @@ help:
 	@echo "  lint         Run all linting checks (black, isort, flake8)"
 	@echo "  pre-commit   Run pre-commit hooks on all files"
 	@echo ""
-# 	@echo "Testing:"
-# 	@echo "  test         Run all tests"
-# 	@echo "  test-quick   Run quick import and basic functionality tests"
+	@echo "Testing:"
+	@echo "  test         Run all tests with pytest"
+	@echo "  test-cov     Run tests with coverage report"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  clean        Clean up build artifacts and cache files"
@@ -59,7 +59,15 @@ pre-commit:
 	@echo "✅ Pre-commit checks complete!"
 
 # Testing
-# test:
+test:
+	@echo "Running tests with pytest..."
+	pixi run pytest tests/ -v
+	@echo "✅ Tests completed!"
+
+test-cov:
+	@echo "Running tests with coverage..."
+	pixi run pytest tests/ -v --cov=mellowgate --cov-report=term-missing --cov-report=html
+	@echo "✅ Tests with coverage completed! Check htmlcov/ for detailed report."
 
 # Example
 example:

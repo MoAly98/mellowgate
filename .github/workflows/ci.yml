@@ -94,17 +94,44 @@ jobs:
   #         echo "✅ Type checking passed."
   #       fi
 
-  # test:
-    # Placeholder for proper unit tests with pytest
-    # Uncomment and modify when you have a proper test suite
-    # - name: Run unit tests with pytest
-    #   run: |
-    #     echo "Running unit tests with pytest..."
-    #     pip install pytest pytest-cov
-    #     pytest tests/ -v --cov=mellowgate --cov-report=term-missing
-    #     if [ $? -ne 0 ]; then
-    #       echo "❌ Unit tests failed."
-    #       exit 1
-    #     else
-    #       echo "✅ Unit tests passed."
-    #     fi
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov
+        # Install project in editable mode
+        pip install -e .
+
+    - name: Run unit tests with pytest
+      run: |
+        echo "Running unit tests with pytest..."
+        pytest tests/ -v --cov=mellowgate --cov-report=term-missing --cov-report=xml
+        if [ $? -ne 0 ]; then
+          echo "❌ Unit tests failed."
+          exit 1
+        else
+          echo "✅ Unit tests passed."
+        fi
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false

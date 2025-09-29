@@ -3,3 +3,9 @@
 # pixi environments
 .pixi
 *.egg-info
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
