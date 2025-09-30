@@ -50,3 +50,23 @@ def sample_gumbel(
     uniform_samples = random_generator.uniform(0.0, 1.0, shape)
     # Apply inverse transform for Gumbel distribution
     return -np.log(-np.log(uniform_samples))
+
+
+def sigmoid_2d(logits: np.ndarray) -> np.ndarray:
+    """Custom sigmoid function for 2D arrays.
+
+    Args:
+        logits: A 2D array of logits with shape (num_branches, num_samples).
+
+    Returns:
+        numpy.ndarray: Sigmoid probabilities with the same shape as logits.
+
+    Examples:
+        >>> logits = np.array([[1, 2], [3, 4]])
+        >>> probabilities = sigmoid_2d(logits)
+        >>> print(probabilities)
+        [[0.73105858 0.88079708]
+         [0.95257413 0.98201379]]
+    """
+    exp_logits = np.exp(-logits)
+    return 1 / (1 + exp_logits)
