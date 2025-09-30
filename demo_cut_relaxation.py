@@ -1,7 +1,10 @@
+# Import necessary libraries
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import numpy as np
 from cycler import cycler
 
+# Import mellowgate components
 from mellowgate.api.estimators import (
     GumbelSoftmaxConfig,
     ReinforceConfig,
@@ -15,112 +18,42 @@ from mellowgate.utils.outputs import OutputManager
 # Initialize output manager
 output_manager = OutputManager(base_directory="outputs")
 
-
-# Define the hard cut function
-def hard_cut(data, threshold):
-    return data[data > (threshold)]
-
-
-# Define the sigmoid relaxation function
-def sigmoid_cut(data, threshold, k=10):
-    weights = 1 / (1 + np.exp(-k * (data - threshold)))
-    return data, weights
+# Define font properties
+# ----------------------------------------
+gs_font = fm.FontProperties(fname="/System/Library/Fonts/Supplemental/GillSans.ttc")
 
 
-# Define mellowgate stochastic relaxation
-def pass_branch(data):
-    """Branch for passing the data point."""
-    return data
+# Define helper functions
+# ----------------------------------------
+# Correct the apply_gill_sans_font function to ensure the legend
+# splits into 3 columns and increases font size
+def apply_gill_sans_font(ax):
+    """Apply Gill Sans font and font size to axis labels, tick labels, and legend."""
+    ax.set_xlabel(
+        ax.get_xlabel(), fontproperties=gs_font, fontsize=13
+    )  # Adjust font size
+    ax.set_ylabel(
+        ax.get_ylabel(), fontproperties=gs_font, fontsize=13
+    )  # Adjust font size
+    for label in ax.get_xticklabels() + ax.get_yticklabels():
+        label.set_fontproperties(gs_font)
+        label.set_fontsize(12)  # Adjust tick label font size
+
+    # Update legend to use Gill Sans font, split into 3 columns, and increase font size
+    legend = ax.get_legend()
+    if legend:
+        for text in legend.get_texts():
+            text.set_fontproperties(gs_font)
+            text.set_fontsize(12)  # Increase legend font size
+        legend.set_frame_on(True)  # Enable legend frame
+        legend.get_frame().set_edgecolor("none")  # Remove box edge
+        legend.get_frame().set_linewidth(0)  # Set frame line width to 0
+        legend.set_bbox_to_anchor((0.0, 1.1))  # Position above the top axis
+        legend.set_loc("upper left")  # Center the legend horizontally
 
 
-def fail_branch(data):
-    """Branch for failing the data point."""
-    return np.zeros_like(data)
-
-
-branches = [
-    Branch(function=fail_branch, derivative_function=lambda x: np.zeros_like(x)),
-    Branch(function=pass_branch, derivative_function=lambda x: np.ones_like(x)),
-]
-
-temperature = 0.1  # Define a temperature parameter for scaling logits
-# Generate synthetic data
-data = np.linspace(-3, 3, 100000)
-alpha = np.array([-1.0, 1.0])
-threshold = 0.0
-
-# Update logits model to use a Heaviside function for branch selection
-logits_model = LogitsModel(
-    logits_function=lambda th: np.array(
-        [-(th - threshold) / 0.1, (th - threshold) / 0.1]
-    ),
-    logits_derivative_function=lambda th: np.array(
-        [np.zeros_like(th), np.zeros_like(th)]
-    ),  # Derivative is zero for Heaviside
-    probability_function=lambda logits: 1.0 / ((1 + np.exp(-logits))),
-)
-
-problem = DiscreteProblem(branches=branches, logits_model=logits_model)
-
-# Apply hard cut
-hard_cut_result = hard_cut(data, threshold)
-
-# Apply sigmoid relaxation
-sigmoid_result, sigmoid_weights = sigmoid_cut(data, threshold)
-
-# Sample branch indices using Heaviside-based logits
-num_samples = 1  # Number of samples per data point
-sampled_branch_indices = problem.sample_branch(data, num_samples=num_samples)
-
-# Filter data based on sampled indices
-stochastic_result = np.array(
-    [
-        data[i] if branch_idx == 1 else None  # Keep data if pass branch is sampled
-        for i, branch_idx in enumerate(sampled_branch_indices.flatten())
-    ]
-)
-
-# Remove None values
-stochastic_result = stochastic_result[stochastic_result != np.array(None)]
-
-# Calculate total number of events left after the "cut" in all three cases
-num_events_hard_cut = len(hard_cut_result)
-num_events_sigmoid_cut = np.sum(sigmoid_weights)
-num_events_stochastic_cut = len(stochastic_result)
-
-print(f"Total events after hard cut: {num_events_hard_cut}")
-print(f"Total events after sigmoid cut: {num_events_sigmoid_cut}")
-print(f"Total events after stochastic cut: {num_events_stochastic_cut}")
-
-# Set all plot styles in rcParams
-plt.rcParams.update(
-    {
-        "axes.linewidth": 1.5,  # Thicker axes
-        "xtick.direction": "in",  # Inside ticks
-        "ytick.direction": "in",  # Inside ticks
-        "xtick.major.size": 6,  # Major tick size
-        "ytick.major.size": 6,  # Major tick size
-        "xtick.minor.size": 4,  # Minor tick size
-        "ytick.minor.size": 4,  # Minor tick size
-        "xtick.minor.width": 0.8,  # Minor tick width
-        "ytick.minor.width": 0.8,  # Minor tick width
-        "xtick.major.width": 1.5,  # Major tick width
-        "ytick.major.width": 1.5,  # Major tick width
-        "font.size": 12,  # Font size for labels
-        "legend.fontsize": 10,  # Font size for legend
-        "figure.figsize": (10, 6),  # Default figure size
-        "axes.labelsize": 12,  # Label font size
-        "axes.titlesize": 14,  # Title font size
-        "axes.grid": False,  # Disable grid by default
-        "xtick.minor.visible": True,  # Enable minor ticks on x-axis
-        "ytick.minor.visible": True,  # Enable minor ticks on y-axis
-        "xtick.top": True,  # Enable ticks on the top side
-        "xtick.bottom": True,  # Enable ticks on the bottom side
-        "ytick.left": True,  # Enable ticks on the left side
-        "ytick.right": True,  # Enable ticks on the right side
-    }
-)
-
+# Apply the old style
+plt.style.use("./50s.mplstyle")
 # Update the color scheme to a popular internet-favored palette
 plt.rcParams.update(
     {
@@ -141,129 +74,172 @@ plt.rcParams.update(
     }
 )
 
+
+# Define cut functions
+# ----------------------------------------
+def hard_cut(data, threshold):
+    """Apply a hard cut to the data."""
+    return data[data > threshold]
+
+
+def sigmoid_cut(data, threshold, k=10):
+    """Apply a sigmoid relaxation to the data."""
+    weights = 1 / (1 + np.exp(-k * (data - threshold)))
+    return data, weights
+
+
+def pass_branch(data):
+    """Branch for passing the data point."""
+    return data
+
+
+def fail_branch(data):
+    """Branch for failing the data point."""
+    return np.zeros_like(data)
+
+
+# Set up mellowgate problem
+# ----------------------------------------
+branches = [
+    Branch(function=fail_branch, derivative_function=lambda x: np.zeros_like(x)),
+    Branch(function=pass_branch, derivative_function=lambda x: np.ones_like(x)),
+]
+
+threshold = 0.0
+logits_model = LogitsModel(
+    logits_function=lambda th: np.array(
+        [-(th - threshold) / 0.1, (th - threshold) / 0.1]
+    ),
+    logits_derivative_function=lambda th: np.array(
+        [np.zeros_like(th), np.zeros_like(th)]
+    ),
+    probability_function=lambda logits: 1.0 / (1 + np.exp(-logits)),
+)
+
+problem = DiscreteProblem(branches=branches, logits_model=logits_model)
+
+# Generate synthetic data
+# ----------------------------------------
+data = np.linspace(-3, 3, 100000)
+
+# Apply cuts
+# ----------------------------------------
+hard_cut_result = hard_cut(data, threshold)
+sigmoid_result, sigmoid_weights = sigmoid_cut(data, threshold)
+
+# Sample branch indices using mellowgate
+num_samples = 1
+sampled_branch_indices = problem.sample_branch(data, num_samples=num_samples)
+
+# Filter data based on sampled indices
+stochastic_result = np.array(
+    [
+        data[i] if branch_idx == 1 else None
+        for i, branch_idx in enumerate(sampled_branch_indices.flatten())
+    ]
+)
+stochastic_result = stochastic_result[stochastic_result != np.array(None)]
+
+# Calculate total events after cuts
+# ----------------------------------------
+num_events_hard_cut = len(hard_cut_result)
+num_events_sigmoid_cut = np.sum(sigmoid_weights)
+num_events_stochastic_cut = len(stochastic_result)
+
+# Print results
+print(f"Total events after hard cut: {num_events_hard_cut}")
+print(f"Total events after sigmoid cut: {num_events_sigmoid_cut}")
+print(f"Total events after stochastic cut: {num_events_stochastic_cut}")
+
 # Plot results
-plt.figure(figsize=(10, 6))
-
-# Hard cut
+# ----------------------------------------
+# First plot: Cut relaxation comparison
+fig, ax = plt.subplots(figsize=(10, 6))
 hard_cut_counts, hard_cut_bins = np.histogram(hard_cut_result, bins=50)
-plt.plot(hard_cut_bins[:-1], hard_cut_counts, label="Hard Cut", drawstyle="steps-post")
+ax.plot(hard_cut_bins[:-1], hard_cut_counts, label="Hard Cut", drawstyle="steps-post")
 
-# Sigmoid relaxation
 sigmoid_counts, sigmoid_bins = np.histogram(
     sigmoid_result, bins=50, weights=sigmoid_weights
 )
-plt.plot(
+ax.plot(
     sigmoid_bins[:-1],
     sigmoid_counts,
     label="Sigmoid Relaxation",
     drawstyle="steps-post",
 )
 
-# Stochastic relaxation
 stochastic_counts, stochastic_bins = np.histogram(stochastic_result, bins=50)
-temperature_label = f"Stochastic Relaxation (T={temperature})"
-plt.plot(
+ax.plot(
     stochastic_bins[:-1],
     stochastic_counts,
-    label=temperature_label,
+    label="Stochastic Relaxation (T=0.1)",
     drawstyle="steps-post",
 )
 
-plt.xlabel("Data Values", fontsize=12)
-plt.ylabel("Frequency", fontsize=12)
-
-# Update legends to include totals and remove legend box
-plt.legend(
-    labels=[
-        f"Hard Cut (Total: {num_events_hard_cut:,})",
-        f"Sigmoid Relaxation (Total: {num_events_sigmoid_cut:,.2f})",
-        f"Stochastic Relaxation (Total: {num_events_stochastic_cut:,})",
-    ],
-    fontsize=10,
-    frameon=False,  # Remove legend box
-)
-
-plt.tight_layout()
-
-# Save the plot using OutputManager
+ax.set_xlabel("Data Values")
+ax.set_ylabel("Frequency")
+ax.legend(fontsize=10, ncols=3)
+ax.grid(True)
+apply_gill_sans_font(ax)
 plot_path = output_manager.get_path("plots", "cut_relaxation_comparison.png")
-plt.savefig(plot_path)
+fig.savefig(plot_path)
 
-# Normalize the histogram counts for each method
-plt.figure(figsize=(10, 6))
-
-# Hard cut (normalized)
+# Second plot: Normalized comparison
+fig, ax = plt.subplots(figsize=(10, 6))
 hard_cut_counts, hard_cut_bins = np.histogram(hard_cut_result, bins=50, density=True)
-plt.plot(
-    hard_cut_bins[:-1],
-    hard_cut_counts,
-    label="Hard Cut (Normalized)",
-    drawstyle="steps-post",
-)
+ax.plot(hard_cut_bins[:-1], hard_cut_counts, label="Hard Cut ", drawstyle="steps-post")
 
-# Sigmoid relaxation (normalized)
 sigmoid_counts, sigmoid_bins = np.histogram(
     sigmoid_result, bins=50, weights=sigmoid_weights, density=True
 )
-plt.plot(
+ax.plot(
     sigmoid_bins[:-1],
     sigmoid_counts,
-    label="Sigmoid Relaxation (Normalized)",
+    label="Sigmoid Relaxation (T=0.1) ",
     drawstyle="steps-post",
 )
 
-# Stochastic relaxation (normalized)
 stochastic_counts, stochastic_bins = np.histogram(
     stochastic_result, bins=50, density=True
 )
-plt.plot(
+ax.plot(
     stochastic_bins[:-1],
     stochastic_counts,
-    label=f"Stochastic Relaxation (T={temperature}, Normalized)",
+    label="Stochastic Relaxation (T=0.1)",
     drawstyle="steps-post",
 )
 
-plt.xlabel("Data Values", fontsize=12)
-plt.ylabel("Normalized Frequency", fontsize=12)
-plt.legend(fontsize=10)
-plt.tight_layout()
-
-# Save the normalized plot using OutputManager
+ax.set_xlabel("Data Values")
+ax.set_ylabel("Normalized Frequency")
+ax.legend(fontsize=10, ncols=3)
+ax.grid(True)
+apply_gill_sans_font(ax)
 normalized_plot_path = output_manager.get_path(
     "plots", "normalized_cut_relaxation_comparison.png"
 )
-plt.savefig(normalized_plot_path)
+fig.savefig(normalized_plot_path)
 
-# Define configurations for Gumbel-Softmax and REINFORCE
+# Third plot: Gradient comparison
+# ----------------------------------------
 config_gumbel = GumbelSoftmaxConfig(
     temperature=0.5, num_samples=500, use_straight_through_estimator=True
 )
 config_reinforce = ReinforceConfig(num_samples=500, use_baseline=True)
 state_reinforce = ReinforceState()
 
-# Compute gradients using Gumbel-Softmax and REINFORCE
 gradient_gumbel = gumbel_softmax_gradient(problem, data, config=config_gumbel)
 gradient_reinforce = reinforce_gradient(
     problem, data, config=config_reinforce, state=state_reinforce
 )
 
-print(f"Gradient using Gumbel-Softmax: {gradient_gumbel}")
-print(f"Gradient using REINFORCE: {gradient_reinforce}")
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.plot(data, gradient_gumbel, label="Gumbel-Softmax Gradient", color="blue")
+ax.plot(data, gradient_reinforce, label="REINFORCE Gradient", color="orange")
 
-# Plot gradients
-plt.figure(figsize=(10, 6))
-
-# Plot Gumbel-Softmax gradient
-plt.plot(data, gradient_gumbel, label="Gumbel-Softmax Gradient", color="blue")
-
-# Plot REINFORCE gradient
-plt.plot(data, gradient_reinforce, label="REINFORCE Gradient", color="orange")
-
-plt.xlabel("Data Values", fontsize=12)
-plt.ylabel("Gradient", fontsize=12)
-plt.legend(fontsize=10)
-plt.tight_layout()
-
-# Save the gradient plot using OutputManager
+ax.set_xlabel("Data Values")
+ax.set_ylabel("Gradient")
+ax.legend(fontsize=10, ncols=3)
+ax.grid(True)
+apply_gill_sans_font(ax)
 gradient_plot_path = output_manager.get_path("plots", "gradient_comparison.png")
-plt.savefig(gradient_plot_path)
+fig.savefig(gradient_plot_path)
