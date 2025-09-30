@@ -53,7 +53,7 @@ def apply_gill_sans_font(ax):
 
 
 # Apply the old style
-plt.style.use("./50s.mplstyle")
+plt.style.use("./src/mellowgate/plots/50s.mplstyle")
 # Update the color scheme to a popular internet-favored palette
 plt.rcParams.update(
     {
