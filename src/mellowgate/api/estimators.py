@@ -7,7 +7,11 @@ optimization problems where exact gradients may not be available:
 2. REINFORCE: Uses policy gradient methods with optional baseline reduction
 3. Gumbel-Softmax: Provides differentiable relaxation of discrete sampling
 
-Each estimator is designed to work with DiscreteProblem instances and supports
+Eac        # Generate all Gumbel noise samples in a single batch using JAX
+        key = jax.random.PRNGKey(0)  # Default key for reproducibility
+        gumbel_noise = sample_gumbel(
+            (config.num_samples, discrete_problem.num_branches), key
+        )ator is designed to work with DiscreteProblem instances and supports
 vectorized operations for efficient computation across multiple parameter values.
 The estimators handle the fundamental challenge of computing gradients through
 discrete sampling operations.
@@ -16,7 +20,8 @@ discrete sampling operations.
 from dataclasses import dataclass
 from typing import Union
 
-import numpy as np
+import jax
+import jax.numpy as jnp
 
 from mellowgate.api.functions import DiscreteProblem
 from mellowgate.utils.functions import softmax
@@ -46,9 +51,9 @@ class FiniteDifferenceConfig:
 
 def finite_difference_gradient(
     discrete_problem: DiscreteProblem,
-    parameter_value: Union[float, np.ndarray],
+    parameter_value: Union[float, jnp.ndarray],
     config: FiniteDifferenceConfig,
-) -> Union[float, np.ndarray]:
+) -> Union[float, jnp.ndarray]:
     """Estimate gradient using finite differences method.
 
     Approximates the gradient by evaluating the function at theta + step_size
@@ -61,37 +66,37 @@ def finite_difference_gradient(
         config: Configuration for finite difference estimation.
 
     Returns:
-        Union[float, np.ndarray]: Estimated gradient values.
+        Union[float, jnp.ndarray]: Estimated gradient values.
                                  Shape matches input parameter_value shape.
                                  Scalar for scalar input, (N,) for array input.
 
     Examples:
-        >>> theta = np.array([0.0, 1.0, 2.0])  # Shape: (3,)
+        >>> theta = jnp.array([0.0, 1.0, 2.0])  # Shape: (3,)
         >>> gradient = finite_difference_gradient(problem, theta, config)
         >>> gradient.shape  # (3,)
     """
     # Convert to array for consistent handling
-    theta_array = np.asarray(parameter_value)
+    theta_array = jnp.asarray(parameter_value)
     is_scalar_input = theta_array.ndim == 0
 
     if is_scalar_input:
         theta_array = theta_array.reshape(1)  # Shape: (1,)
 
-    def _monte_carlo_expectation(theta: np.ndarray) -> np.ndarray:
+    def _monte_carlo_expectation(theta: jnp.ndarray) -> jnp.ndarray:
         """Compute Monte Carlo expectation for given theta values.
 
         Args:
             theta: Parameter values, shape: (N,)
 
         Returns:
-            np.ndarray: Expected values, shape: (N,)
+            jnp.ndarray: Expected values, shape: (N,)
         """
         # sampled_values shape: (N, num_samples)
         sampled_values = discrete_problem.compute_stochastic_values(
             theta, num_samples=config.num_samples
         )
         # Return shape: (N,) - mean along sample dimension
-        return np.mean(sampled_values, axis=1)
+        return jnp.mean(sampled_values, axis=1)
 
     # Create perturbed theta arrays
     # All have shape: (N,) where N = len(theta_array)
@@ -174,10 +179,10 @@ class ReinforceState:
 
 def reinforce_gradient(
     discrete_problem: DiscreteProblem,
-    parameter_value: Union[float, np.ndarray],
+    parameter_value: Union[float, jnp.ndarray],
     config: ReinforceConfig,
     state: ReinforceState,
-) -> Union[float, np.ndarray]:
+) -> Union[float, jnp.ndarray]:
     """
     Estimate the gradient using the REINFORCE algorithm with vectorized operations.
 
@@ -198,7 +203,7 @@ def reinforce_gradient(
         state: State object to maintain baseline across calls.
 
     Returns:
-        Union[float, np.ndarray]: Estimated gradient value(s). Returns scalar
+        Union[float, jnp.ndarray]: Estimated gradient value(s). Returns scalar
             for scalar input, array for array input.
 
     Raises:
@@ -212,22 +217,22 @@ def reinforce_gradient(
         - All operations are vectorized for computational efficiency
     """
     # Convert to array for consistent handling
-    theta_array = np.asarray(parameter_value)
+    theta_array = jnp.asarray(parameter_value)
     is_scalar_input = theta_array.ndim == 0
 
     if is_scalar_input:
         theta_array = theta_array.reshape(1)
 
     # Ensure all arrays are properly typed as numpy arrays
-    choice_probabilities = np.asarray(
+    choice_probabilities = jnp.asarray(
         discrete_problem.compute_probabilities(theta_array)
     )
-    function_values = np.asarray(discrete_problem.compute_function_values(theta_array))
+    function_values = jnp.asarray(discrete_problem.compute_function_values(theta_array))
 
     # Get pathwise gradients if available (optional)
     pathwise_gradients = discrete_problem.compute_derivative_values(theta_array)
     if pathwise_gradients is not None:
-        pathwise_gradients = np.asarray(pathwise_gradients)
+        pathwise_gradients = jnp.asarray(pathwise_gradients)
 
     # Check that we have the required gradient information for score function
     if discrete_problem.logits_model.logits_derivative_function is None:
@@ -235,7 +240,7 @@ def reinforce_gradient(
             "REINFORCE requires logits_derivative_function for score function."
         )
 
-    logits_gradients = np.asarray(
+    logits_gradients = jnp.asarray(
         discrete_problem.logits_model.logits_derivative_function(theta_array)
     )
 
@@ -245,10 +250,10 @@ def reinforce_gradient(
     #            logits_gradients shape: (num_branches, num_theta)
     if choice_probabilities.ndim == 1:
         # Single theta case
-        score_function_center = np.dot(choice_probabilities, logits_gradients)
+        score_function_center = jnp.dot(choice_probabilities, logits_gradients)
     else:
         # Multiple theta case - element-wise products then sum over branches
-        score_function_center = np.sum(choice_probabilities * logits_gradients, axis=0)
+        score_function_center = jnp.sum(choice_probabilities * logits_gradients, axis=0)
 
     # Sample discrete choices according to current policy
     sampled_choice_indices = discrete_problem.sample_branch(
@@ -258,7 +263,7 @@ def reinforce_gradient(
     # (num_samples,) for single theta
 
     # Handle baseline computation and updates
-    baseline_values = np.zeros(len(theta_array))
+    baseline_values = jnp.zeros(len(theta_array))
     if config.use_baseline:
         # For vectorized case, we need to handle baseline per theta value
         # For now, use the same baseline for all theta values (could be enhanced)
@@ -267,45 +272,52 @@ def reinforce_gradient(
             sampled_rewards = function_values[sampled_choice_indices]
         else:
             # Multiple theta case
-            sampled_rewards = np.array(
+            sampled_rewards = jnp.array(
                 [
                     function_values[sampled_choice_indices[i], i]
                     for i in range(len(theta_array))
                 ]
             )
 
-        current_mean_rewards = np.mean(sampled_rewards, axis=-1)  # Mean over samples
+        current_mean_rewards = jnp.mean(sampled_rewards, axis=-1)  # Mean over samples
 
         # Use existing baseline or initialize with current mean
         if state.initialized:
-            baseline_values.fill(state.baseline)
+            baseline_values = jnp.full_like(current_mean_rewards, state.baseline)
         else:
-            baseline_values = current_mean_rewards.copy()
+            baseline_values = current_mean_rewards
 
         # Update baseline for future use (use mean of current rewards)
-        overall_mean_reward = np.mean(current_mean_rewards)
+        overall_mean_reward = float(jnp.mean(current_mean_rewards))
         state.update_baseline(overall_mean_reward, config.baseline_momentum)
 
-    # Compute pathwise gradient contribution (if available)
-    pathwise_contribution = np.zeros((len(theta_array), config.num_samples))
+    # Compute pathwise gradient contribution (if available) using functional approach
     if pathwise_gradients is not None:
-        if pathwise_gradients.ndim == 1:
+        if len(theta_array) == 0:
+            # Handle empty theta array case
+            pathwise_contribution = jnp.zeros((0, config.num_samples))
+        elif pathwise_gradients.ndim == 1:
             # Single theta case
-            pathwise_contribution[0] = pathwise_gradients[sampled_choice_indices]
+            pathwise_contribution = pathwise_gradients[sampled_choice_indices].reshape(
+                1, -1
+            )
         else:
-            # Multiple theta case
-            for i in range(len(theta_array)):
-                pathwise_contribution[i] = pathwise_gradients[
-                    sampled_choice_indices[i], i
+            # Multiple theta case - build contributions for each theta
+            pathwise_contribution = jnp.stack(
+                [
+                    pathwise_gradients[sampled_choice_indices[i], i]
+                    for i in range(len(theta_array))
                 ]
+            )
+    else:
+        pathwise_contribution = jnp.zeros((len(theta_array), config.num_samples))
 
     # Compute score function contribution
     # Score function: (f(x) - baseline) * (∇θ log π(x|θ))
     # where ∇θ log π(x|θ) = ∇θ a(x) - Σ π(y) * ∇θ a(y)
 
-    gradient_estimates = np.zeros(len(theta_array))
-
-    for i in range(len(theta_array)):
+    # Compute gradient estimates for all theta values using vectorized operations
+    def compute_gradient_for_theta(i):
         if function_values.ndim == 1:
             # Single theta case
             sampled_function_vals = function_values[sampled_choice_indices]
@@ -327,7 +339,15 @@ def reinforce_gradient(
         total_gradient_terms = pathwise_contribution[i] + score_function_terms
 
         # Return empirical mean as gradient estimate
-        gradient_estimates[i] = np.mean(total_gradient_terms)
+        return jnp.mean(total_gradient_terms)
+
+    # Compute gradients for all theta values
+    if len(theta_array) == 0:
+        gradient_estimates = jnp.array([])
+    else:
+        gradient_estimates = jnp.array(
+            [compute_gradient_for_theta(i) for i in range(len(theta_array))]
+        )
 
     # Return scalar if input was scalar, array otherwise
     if is_scalar_input:
@@ -361,9 +381,9 @@ class GumbelSoftmaxConfig:
 
 def gumbel_softmax_gradient(
     discrete_problem: DiscreteProblem,
-    parameter_value: Union[float, np.ndarray],
+    parameter_value: Union[float, jnp.ndarray],
     config: GumbelSoftmaxConfig,
-) -> Union[float, np.ndarray]:
+) -> Union[float, jnp.ndarray]:
     """
     Estimate the gradient using the Gumbel-Softmax reparameterization trick
     with vectorized operations.
@@ -379,7 +399,7 @@ def gumbel_softmax_gradient(
         config: Configuration parameters for Gumbel-Softmax estimation.
 
     Returns:
-        Union[float, np.ndarray]: Estimated gradient value(s). Returns scalar
+        Union[float, jnp.ndarray]: Estimated gradient value(s). Returns scalar
             for scalar input, array for array input.
 
     Raises:
@@ -387,7 +407,7 @@ def gumbel_softmax_gradient(
             (dlogits_dtheta) required for reparameterization.
     """
     # Convert to array for consistent handling
-    theta_array = np.asarray(parameter_value)
+    theta_array = jnp.asarray(parameter_value)
     is_scalar_input = theta_array.ndim == 0
 
     if is_scalar_input:
@@ -400,22 +420,21 @@ def gumbel_softmax_gradient(
         )
 
     # Get all required arrays with proper type conversion
-    logits_gradients = np.asarray(
+    logits_gradients = jnp.asarray(
         discrete_problem.logits_model.logits_derivative_function(theta_array)
     )
-    logits = np.asarray(discrete_problem.logits_model.logits_function(theta_array))
-    function_values = np.asarray(discrete_problem.compute_function_values(theta_array))
+    logits = jnp.asarray(discrete_problem.logits_model.logits_function(theta_array))
+    function_values = jnp.asarray(discrete_problem.compute_function_values(theta_array))
 
     # Get pathwise gradients if available (optional)
     pathwise_gradients = discrete_problem.compute_derivative_values(theta_array)
     if pathwise_gradients is not None:
-        pathwise_gradients = np.asarray(pathwise_gradients)
+        pathwise_gradients = jnp.asarray(pathwise_gradients)
 
     num_theta = len(theta_array)
-    gradient_estimates = np.zeros(num_theta)
 
-    # Process each theta value
-    for i in range(num_theta):
+    # Define a function to compute gradient for a single theta
+    def compute_gradient_for_theta(i):
         # Extract values for current theta
         if logits.ndim == 1 and num_theta == 1:
             # Single theta case
@@ -438,10 +457,10 @@ def gumbel_softmax_gradient(
                 pathwise_gradients[:, i] if pathwise_gradients is not None else None
             )
 
-        # Generate all Gumbel noise samples in a single batch
+        # Generate all Gumbel noise samples in a single batch using JAX
+        key = jax.random.PRNGKey(i)  # Use different key for each theta
         gumbel_noise = sample_gumbel(
-            (config.num_samples, discrete_problem.num_branches),
-            np.random.default_rng(0),
+            (config.num_samples, discrete_problem.num_branches), key
         )
 
         # Compute Gumbel-perturbed logits for all samples
@@ -455,31 +474,31 @@ def gumbel_softmax_gradient(
         )  # Shape: (num_samples, num_branches)
 
         # Compute pathwise gradient contributions (if available)
-        pathwise_contribution = np.zeros(config.num_samples)
+        pathwise_contribution = jnp.zeros(config.num_samples)
         if current_pathwise_gradients is not None:
             if config.use_straight_through_estimator:
                 # STE: Use discrete sampling but continuous gradients
-                best_choice_indices = np.argmax(
+                best_choice_indices = jnp.argmax(
                     perturbed_logits, axis=1
                 )  # Shape: (num_samples,)
                 pathwise_contribution = current_pathwise_gradients[best_choice_indices]
             else:
                 # Continuous relaxation using softmax
-                pathwise_contribution = np.dot(
+                pathwise_contribution = jnp.dot(
                     continuous_weights, current_pathwise_gradients
                 )
 
         # Compute reparameterization gradient contributions
-        mean_logits_gradient = np.dot(
+        mean_logits_gradient = jnp.dot(
             continuous_weights, current_logits_gradients
         )  # Shape: (num_samples,)
 
         softmax_gradient = (
             continuous_weights
-            * (current_logits_gradients - mean_logits_gradient[:, np.newaxis])
+            * (current_logits_gradients - mean_logits_gradient[:, jnp.newaxis])
         ) / config.temperature  # Shape: (num_samples, num_branches)
 
-        reparameterization_contribution = np.sum(
+        reparameterization_contribution = jnp.sum(
             current_function_values * softmax_gradient, axis=1
         )  # Shape: (num_samples,)
 
@@ -487,7 +506,15 @@ def gumbel_softmax_gradient(
         total_gradient_terms = pathwise_contribution + reparameterization_contribution
 
         # Return empirical mean as final gradient estimate for this theta
-        gradient_estimates[i] = np.mean(total_gradient_terms)
+        return jnp.mean(total_gradient_terms)
+
+    # Compute gradients for all theta values
+    if num_theta == 0:
+        gradient_estimates = jnp.array([])
+    else:
+        gradient_estimates = jnp.array(
+            [compute_gradient_for_theta(i) for i in range(num_theta)]
+        )
 
     # Return scalar if input was scalar, array otherwise
     if is_scalar_input:
