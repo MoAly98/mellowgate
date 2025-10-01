@@ -5,7 +5,7 @@ dependencies = [
     "matplotlib>=3.10.6,<4",
 ]
 name = "mellowgate"
-requires-python = ">= 3.11"
+requires-python = ">= 3.11,<=3.13"
 version = "0.1.0"
 
 [build-system]
@@ -32,7 +32,8 @@ pre-commit = "*"
 pytest = ">=8.4.2,<9"
 pytest-cov = "*"
 jupyterlab = ">=4.4.9,<5"
-jax = ">=0.7.1,<0.8"
+jax = ">=0.7.0,<0.7.1"
+flax = ">=0.10.2,<0.11"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
