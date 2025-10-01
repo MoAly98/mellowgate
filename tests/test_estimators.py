@@ -454,6 +454,271 @@ class TestGumbelSoftmaxGradient:
         assert isinstance(gradient2, float)
 
 
+class TestGradientAccuracy:
+    """Test gradient estimator accuracy against known analytical solutions."""
+
+    @pytest.fixture
+    def quadratic_problem(self):
+        """Create a simple quadratic problem with known exact gradients.
+
+        Functions: f1(θ) = θ², f2(θ) = (θ-1)²
+        Logits: a1(θ) = θ, a2(θ) = -θ
+        Probabilities: p1 = exp(θ)/(exp(θ) + exp(-θ)) = sigmoid(2θ)
+                      p2 = exp(-θ)/(exp(θ) + exp(-θ)) = sigmoid(-2θ)
+
+        Expected value: E[f] = p1 * θ² + p2 * (θ-1)²
+        Exact gradient can be computed analytically.
+        """
+        branches = [
+            Branch(
+                function=lambda th: th**2,
+                derivative_function=lambda th: 2 * th,
+            ),
+            Branch(
+                function=lambda th: (th - 1) ** 2,
+                derivative_function=lambda th: 2 * (th - 1),
+            ),
+        ]
+
+        logits_model = LogitsModel(
+            logits_function=lambda th: jnp.array([th, -th]),
+            logits_derivative_function=lambda th: jnp.array(
+                [jnp.ones_like(th), -jnp.ones_like(th)]
+            ),
+        )
+
+        return DiscreteProblem(branches=branches, logits_model=logits_model)
+
+    def _compute_exact_gradient(self, theta):
+        """Compute exact gradient for the quadratic problem analytically.
+
+        For the quadratic problem:
+        E[f] = p1 * θ² + p2 * (θ-1)²
+        where p1 = sigmoid(2θ), p2 = sigmoid(-2θ) = 1 - p1
+
+        d/dθ E[f] = d/dθ [p1 * θ² + (1-p1) * (θ-1)²]
+                  = dp1/dθ * [θ² - (θ-1)²] + p1 * 2θ + (1-p1) * 2(θ-1)
+                  = dp1/dθ * [2θ - 1] + 2θ * p1 + 2(θ-1) * (1-p1)
+
+        where dp1/dθ = 2 * p1 * (1-p1) (derivative of sigmoid(2θ))
+        """
+        theta = jnp.asarray(theta)
+
+        # Compute probabilities
+        logits_diff = 2 * theta  # θ - (-θ) = 2θ
+        p1 = 1 / (1 + jnp.exp(-logits_diff))  # sigmoid(2θ)
+        p2 = 1 - p1
+
+        # Function values
+        f1 = theta**2
+        f2 = (theta - 1) ** 2
+
+        # Pathwise derivatives
+        df1_dtheta = 2 * theta
+        df2_dtheta = 2 * (theta - 1)
+
+        # Score function terms
+        dp1_dtheta = 2 * p1 * p2  # derivative of sigmoid(2θ)
+        score_contribution = dp1_dtheta * (f1 - f2)
+
+        # Pathwise contribution
+        pathwise_contribution = p1 * df1_dtheta + p2 * df2_dtheta
+
+        return score_contribution + pathwise_contribution
+
+    def test_finite_difference_accuracy(self, quadratic_problem):
+        """Test finite difference accuracy against exact gradient."""
+        theta_values = jnp.array([0.0, 0.5, 1.0])
+        exact_gradients = self._compute_exact_gradient(theta_values)
+
+        config = FiniteDifferenceConfig(step_size=1e-4, num_samples=10000)
+        estimated_gradients = finite_difference_gradient(
+            quadratic_problem, theta_values, config
+        )
+
+        # Check that estimates are within reasonable tolerance of exact values
+        # Finite differences are inherently noisy due to Monte Carlo sampling
+        relative_error = jnp.abs(estimated_gradients - exact_gradients) / (
+            jnp.abs(exact_gradients) + 1e-8
+        )
+        print(
+            f"FD: Exact={exact_gradients}, "
+            f"Estimated={estimated_gradients}, "
+            f"RelError={relative_error}"
+        )
+        assert jnp.all(
+            relative_error < 0.4
+        ), f"Relative errors too large: {relative_error}"
+
+    def test_reinforce_accuracy(self, quadratic_problem):
+        """Test REINFORCE accuracy against exact gradient."""
+        theta_values = jnp.array([0.0, 0.5, 1.0])
+        exact_gradients = self._compute_exact_gradient(theta_values)
+
+        config = ReinforceConfig(num_samples=10000, use_baseline=True)
+        state = ReinforceState()
+
+        estimated_gradients = reinforce_gradient(
+            quadratic_problem, theta_values, config, state
+        )
+
+        # REINFORCE has higher variance, so use larger tolerance
+        relative_error = jnp.abs(estimated_gradients - exact_gradients) / (
+            jnp.abs(exact_gradients) + 1e-8
+        )
+        assert jnp.all(
+            relative_error < 0.3
+        ), f"Relative errors too large: {relative_error}"
+
+    def test_gumbel_softmax_accuracy(self, quadratic_problem):
+        """Test Gumbel-Softmax accuracy against exact gradient."""
+        theta_values = jnp.array([0.0, 0.5, 1.0])
+        exact_gradients = self._compute_exact_gradient(theta_values)
+
+        config = GumbelSoftmaxConfig(num_samples=5000, temperature=0.1)
+        estimated_gradients = gumbel_softmax_gradient(
+            quadratic_problem, theta_values, config
+        )
+
+        # Gumbel-Softmax should be quite accurate with low temperature
+        relative_error = jnp.abs(estimated_gradients - exact_gradients) / (
+            jnp.abs(exact_gradients) + 1e-8
+        )
+        assert jnp.all(
+            relative_error < 0.2
+        ), f"Relative errors too large: {relative_error}"
+
+    def test_simple_gradient_sanity_check(self):
+        """
+        Test that estimators produce reasonable gradient estimates on simple problems.
+        """
+        # Create simple quadratic functions with known behavior
+        branches = [
+            Branch(
+                function=lambda th: th**2,
+                derivative_function=lambda th: 2 * th,
+            ),
+            Branch(
+                function=lambda th: 2 * th**2,
+                derivative_function=lambda th: 4 * th,
+            ),
+        ]
+
+        # Use simple theta-dependent logits to avoid edge cases
+        logits_model = LogitsModel(
+            logits_function=lambda th: jnp.array([0.1 * th, -0.1 * th]),
+            logits_derivative_function=lambda th: jnp.array(
+                [0.1 * jnp.ones_like(th), -0.1 * jnp.ones_like(th)]
+            ),
+        )
+
+        problem = DiscreteProblem(branches=branches, logits_model=logits_model)
+
+        theta_values = jnp.array([1.0, 2.0])
+
+        # Use JAX autodiff for exact reference
+        import jax
+
+        def expected_function(theta):
+            logits = jnp.array([0.1 * theta, -0.1 * theta])
+            probs = jnp.exp(logits) / jnp.sum(jnp.exp(logits))
+            f1 = theta**2
+            f2 = 2 * theta**2
+            return probs[0] * f1 + probs[1] * f2
+
+        exact_grad_func = jax.grad(expected_function)
+        expected_gradient = jnp.array([exact_grad_func(t) for t in theta_values])
+
+        # Test finite difference
+        fd_config = FiniteDifferenceConfig(step_size=1e-4, num_samples=5000)
+        fd_gradient = finite_difference_gradient(problem, theta_values, fd_config)
+        fd_error = jnp.abs(fd_gradient - expected_gradient) / (
+            jnp.abs(expected_gradient) + 1e-8
+        )
+        assert jnp.all(fd_error < 0.2), f"FD relative error too large: {fd_error}"
+
+        # Test REINFORCE
+        reinforce_config = ReinforceConfig(num_samples=5000)
+        reinforce_state = ReinforceState()
+        reinforce_grad = reinforce_gradient(
+            problem, theta_values, reinforce_config, reinforce_state
+        )
+        reinforce_error = jnp.abs(reinforce_grad - expected_gradient) / (
+            jnp.abs(expected_gradient) + 1e-8
+        )
+        assert jnp.all(
+            reinforce_error < 0.2
+        ), f"REINFORCE relative error too large: {reinforce_error}"
+
+    def test_linear_function_reasonable_accuracy(self):
+        """Test that estimators give reasonable results for linear functions."""
+        # Create linear functions: f1(θ) = 2θ + 1, f2(θ) = 3θ - 1
+        branches = [
+            Branch(
+                function=lambda th: 2 * th + 1,
+                derivative_function=lambda th: 2 * jnp.ones_like(th),
+            ),
+            Branch(
+                function=lambda th: 3 * th - 1,
+                derivative_function=lambda th: 3 * jnp.ones_like(th),
+            ),
+        ]
+
+        logits_model = LogitsModel(
+            logits_function=lambda th: jnp.array([th, -th]),
+            logits_derivative_function=lambda th: jnp.array(
+                [jnp.ones_like(th), -jnp.ones_like(th)]
+            ),
+        )
+
+        problem = DiscreteProblem(branches=branches, logits_model=logits_model)
+
+        theta_values = jnp.array([0.5, 1.0, 1.5])
+
+        # Compute exact gradient using JAX autodiff (most reliable)
+        import jax
+
+        def expected_function(theta):
+            logits = jnp.array([theta, -theta])
+            probs = jnp.exp(logits) / jnp.sum(jnp.exp(logits))
+            f1 = 2 * theta + 1
+            f2 = 3 * theta - 1
+            return probs[0] * f1 + probs[1] * f2
+
+        exact_grad_func = jax.grad(expected_function)
+        exact_gradient = jnp.array([exact_grad_func(t) for t in theta_values])
+
+        # Test with realistic tolerances for Monte Carlo methods
+        fd_config = FiniteDifferenceConfig(step_size=1e-4, num_samples=8000)
+        fd_gradient = finite_difference_gradient(problem, theta_values, fd_config)
+        fd_error = jnp.abs(fd_gradient - exact_gradient) / (
+            jnp.abs(exact_gradient) + 1e-8
+        )
+        print(
+            f"Linear FD: Exact={exact_gradient}, "
+            f"Estimated={fd_gradient}, "
+            f"RelError={fd_error}"
+        )
+        assert jnp.all(fd_error < 0.4), f"FD relative errors too large: {fd_error}"
+
+        reinforce_config = ReinforceConfig(num_samples=8000)
+        reinforce_state = ReinforceState()
+        reinforce_grad = reinforce_gradient(
+            problem, theta_values, reinforce_config, reinforce_state
+        )
+        reinforce_error = jnp.abs(reinforce_grad - exact_gradient) / (
+            jnp.abs(exact_gradient) + 1e-8
+        )
+        print(
+            f"Linear REINFORCE: Exact={exact_gradient}, "
+            f"Estimated={reinforce_grad}, "
+            f"RelError={reinforce_error}"
+        )
+        assert jnp.all(
+            reinforce_error < 0.3
+        ), f"REINFORCE relative errors too large: {reinforce_error}"
+
+
 class TestEdgeCases:
     """Test edge cases and error conditions."""
 
