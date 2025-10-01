@@ -12,31 +12,31 @@ access patterns for downstream analysis and visualization.
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-import numpy as np
+import jax.numpy as jnp
 
 
 @dataclass
 class ResultsContainer:
     """Container for storing experiment results and metadata."""
 
-    theta_values: np.ndarray
-    gradient_estimates: Dict[str, Dict[str, np.ndarray]]
-    sampled_points: Optional[Dict[str, np.ndarray]] = None
-    expectation_values: Optional[np.ndarray] = None
-    discrete_distributions: Optional[np.ndarray] = None
+    theta_values: jnp.ndarray
+    gradient_estimates: Dict[str, Dict[str, jnp.ndarray]]
+    sampled_points: Optional[Dict[str, jnp.ndarray]] = None
+    expectation_values: Optional[jnp.ndarray] = None
+    discrete_distributions: Optional[jnp.ndarray] = None
 
     def add_sampled_points(
-        self, estimator_name: str, sampled_points: np.ndarray
+        self, estimator_name: str, sampled_points: jnp.ndarray
     ) -> None:
         """Add sampled points for a specific estimator."""
         if self.sampled_points is None:
             self.sampled_points = {}
         self.sampled_points[estimator_name] = sampled_points
 
-    def add_expectation_values(self, expectation_values: np.ndarray) -> None:
+    def add_expectation_values(self, expectation_values: jnp.ndarray) -> None:
         """Add expectation values."""
         self.expectation_values = expectation_values
 
-    def add_discrete_distributions(self, distributions: np.ndarray) -> None:
+    def add_discrete_distributions(self, distributions: jnp.ndarray) -> None:
         """Add discrete distributions."""
         self.discrete_distributions = distributions
