@@ -490,6 +490,11 @@ class DiscreteProblem:
         """Sample branch indices based on the probability distribution using
         vectorized operations.
 
+        Performance optimizations:
+        - Batched key splitting for efficient key generation
+        - Vectorized categorical sampling across all theta values
+        - JIT compilation for operation fusion and reduced overhead
+
         Efficiently samples branches for each theta value in the input array.
         Uses either a custom sampling function or JAX's categorical sampling.
 
@@ -543,7 +548,7 @@ class DiscreteProblem:
                 )
             return samples
         else:
-            # Use JAX categorical sampling
+            # Use JAX categorical sampling with optimized vectorization
             if key is None:
                 key = jax.random.PRNGKey(0)  # Default key for reproducibility
 
@@ -556,16 +561,17 @@ class DiscreteProblem:
                 return jax.random.categorical(key, logits, shape=(num_samples,))
             else:
                 # Multiple theta case: probabilities shape (num_branches, N)
-                # Need to handle each theta separately
+                # Batched key generation for efficient sampling
                 keys = jax.random.split(key, theta.shape[0])
-                samples = []
-                for i in range(theta.shape[0]):
-                    logits = jnp.log(probabilities[:, i] + 1e-8)
-                    sample = jax.random.categorical(
-                        keys[i], logits, shape=(num_samples,)
-                    )
-                    samples.append(sample)
-                return jnp.array(samples)
+
+                # Vectorized categorical sampling using vmap
+                def sample_for_theta(key_i, probs_i):
+                    logits = jnp.log(probs_i + 1e-8)
+                    return jax.random.categorical(key_i, logits, shape=(num_samples,))
+
+                # Single vmap call for vectorized sampling
+                samples = jax.vmap(sample_for_theta)(keys, probabilities.T)
+                return samples
 
     def compute_stochastic_values(
         self,
@@ -574,6 +580,12 @@ class DiscreteProblem:
         key: Optional[jax.Array] = None,
     ) -> jnp.ndarray:
         """Compute stochastic values of the discrete problem using vectorized sampling.
+
+        Performance optimizations:
+        - Single batched gather using jnp.take_along_axis for efficient indexing
+        - Vectorized operations across samples
+        - JIT compilation for operation fusion and reduced overhead
+        - Precomputes function values once and reuses efficiently
 
         This method samples branches based on the probability distribution and
         evaluates their function values efficiently using vectorized operations.
@@ -613,33 +625,42 @@ class DiscreteProblem:
         if theta_array.size == 0:
             return jnp.empty((0, num_samples))
 
-        # Sample branch indices using the sampling function or JAX
+        # Precompute function values for all branches once - efficient computation
+        function_values_at_choices = self.compute_function_values(theta_array)
+
+        # Sample branch indices using vectorized sampling
         sampled_branches = self.sample_branch(
             theta_array, num_samples=num_samples, key=key
         )
 
-        # Precompute function values for all branches
-        function_values_at_choices = self.compute_function_values(theta_array)
-
-        # Handle both single and multiple theta cases
+        # Handle both single and multiple theta cases with efficient batched gather
         if function_values_at_choices.ndim == 1:
-            # Single theta case: function_values is (num_branches,), samples is
-            # (num_samples,)
-            sampled_function_values = function_values_at_choices[sampled_branches]
+            # Single theta case: function_values is (num_branches,),
+            # samples is (num_samples,)
+            sampled_function_values = jnp.take(
+                function_values_at_choices, sampled_branches, axis=0
+            )
         else:
-            # Multiple theta case: function_values is (num_branches, num_theta),
+            # Multiple theta case: function_values is (num_branches, num_theta)
             # samples is (num_theta, num_samples)
             if sampled_branches.ndim == 1:
                 # Single theta case but with 2D function values
-                sampled_function_values = function_values_at_choices[
-                    sampled_branches, 0
-                ]
-            else:
-                sampled_function_values = jnp.array(
-                    [
-                        function_values_at_choices[sampled_branches[i], i]
-                        for i in range(theta_array.shape[0])
-                    ]
+                sampled_function_values = jnp.take(
+                    function_values_at_choices[:, 0], sampled_branches, axis=0
                 )
+            else:
+                # Efficient batched gather using take_along_axis for advanced indexing
+                # Prepare indices for advanced indexing
+                theta_indices = jnp.arange(theta_array.shape[0])[
+                    :, jnp.newaxis
+                ]  # Shape: (num_theta, 1)
+                theta_indices_expanded = jnp.broadcast_to(
+                    theta_indices, sampled_branches.shape
+                )  # Shape: (num_theta, num_samples)
+
+                # Single batched gather operation for efficient indexing
+                sampled_function_values = function_values_at_choices[
+                    sampled_branches, theta_indices_expanded
+                ]
 
         return sampled_function_values

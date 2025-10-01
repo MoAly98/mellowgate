@@ -26,24 +26,6 @@ from mellowgate.utils.outputs import OutputManager
 # Initialise output manager for this script
 output_manager = OutputManager(base_directory="outputs")
 
-# branches
-branches = [
-    Branch(
-        function=lambda th: jnp.sin(th),
-        derivative_function=lambda th: -jnp.sin(th),
-        threshold=(None, Bound(-1, inclusive=False)),
-    ),
-    Branch(
-        function=lambda th: jnp.cos(th),
-        derivative_function=lambda th: jnp.cos(th),
-        threshold=(Bound(-1, inclusive=True), Bound(1, inclusive=False)),
-    ),
-    Branch(
-        function=lambda th: jnp.tanh(th),
-        derivative_function=lambda th: 1 - jnp.tanh(th) ** 2,
-        threshold=(Bound(1, inclusive=True), None),
-    ),
-]
 
 branches = [
     Branch(
@@ -58,7 +40,6 @@ branches = [
     ),
 ]
 
-alpha = jnp.array([-1.0, 0.0, 1.0])
 alpha = jnp.array([-1.0, 1.0])
 
 
@@ -103,7 +84,7 @@ logits_model = LogitsModel(
     * th,  # Broadcasting: (2, 1) * (N,) -> (2, N)
     logits_derivative_function=lambda th: alpha[:, jnp.newaxis]
     * jnp.ones_like(th),  # (2, 1) * (N,) -> (2, N)
-    probability_function=softmax,  # Use softmax for probabilities
+    probability_function=sigmoid,  # Use softmax for probabilities
 )
 
 prob = DiscreteProblem(
@@ -112,19 +93,19 @@ prob = DiscreteProblem(
     # sampling_function=bernoulli_sampling,  # Use Bernoulli sampling
 )
 
-thetas = jnp.linspace(-2.5, 2.5, 2)
+thetas = jnp.linspace(-2.5, 2.5, 100)
 sweep = Sweep(
     theta_values=thetas,
-    num_repetitions=1000,
+    num_repetitions=100,
     estimator_configs={
-        "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=1000)},
+        "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=10000)},
         "reinforce": {
-            "cfg": ReinforceConfig(num_samples=1000, use_baseline=True),
+            "cfg": ReinforceConfig(num_samples=10000, use_baseline=True),
             "state": ReinforceState(),
         },
         "gs": {
             "cfg": GumbelSoftmaxConfig(
-                temperature=0.5, num_samples=500, use_straight_through_estimator=True
+                temperature=0.01, num_samples=10000, use_straight_through_estimator=True
             )
         },
     },
