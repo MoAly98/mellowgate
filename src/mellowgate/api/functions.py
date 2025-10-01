@@ -17,12 +17,13 @@ with large parameter spaces.
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Union
 
-import numpy as np
+import jax
+import jax.numpy as jnp
 
 from mellowgate.utils.functions import softmax
 
 
-def _default_probability_function(logits: np.ndarray) -> np.ndarray:
+def _default_probability_function(logits: jnp.ndarray) -> jnp.ndarray:
     """Default probability function that applies softmax along branch dimension."""
     if logits.ndim == 1:
         return softmax(logits)
@@ -70,13 +71,13 @@ class Branch:
         >>> import numpy as np
         >>> # Vectorized branch with trigonometric function
         >>> cos_branch = Branch(
-        ...     function=lambda theta: np.cos(theta),
-        ...     derivative_function=lambda theta: -np.sin(theta)
+        ...     function=lambda theta: jnp.cos(theta),
+        ...     derivative_function=lambda theta: -jnp.sin(theta)
         ... )
     """
 
-    function: Callable[[np.ndarray], np.ndarray]
-    derivative_function: Optional[Callable[[np.ndarray], np.ndarray]] = None
+    function: Callable[[jnp.ndarray], jnp.ndarray]
+    derivative_function: Optional[Callable[[jnp.ndarray], jnp.ndarray]] = None
     threshold: Optional[tuple[Optional[Bound], Optional[Bound]]] = (None, None)
 
 
@@ -100,16 +101,18 @@ class LogitsModel:
         >>> import numpy as np
         >>> # Vectorized logits model
         >>> logits_model = LogitsModel(
-        ...     logits_function=lambda theta: np.array([theta, -theta]),
-        ...     logits_derivative_function=lambda theta: np.array([
-        ...         np.ones_like(theta), -np.ones_like(theta)
+        ...     logits_function=lambda theta: jnp.array([theta, -theta]),
+        ...     logits_derivative_function=lambda theta: jnp.array([
+        ...         jnp.ones_like(theta), -jnp.ones_like(theta)
         ...     ])
         ... )
     """
 
-    logits_function: Callable[[np.ndarray], np.ndarray]  # returns shape (K,) or (K, N)
-    logits_derivative_function: Optional[Callable[[np.ndarray], np.ndarray]] = None
-    probability_function: Callable[[np.ndarray], np.ndarray] = (
+    logits_function: Callable[
+        [jnp.ndarray], jnp.ndarray
+    ]  # returns shape (K,) or (K, N)
+    logits_derivative_function: Optional[Callable[[jnp.ndarray], jnp.ndarray]] = None
+    probability_function: Callable[[jnp.ndarray], jnp.ndarray] = (
         _default_probability_function
     )
 
@@ -127,8 +130,8 @@ class DiscreteProblem:
     Attributes:
         branches: List of Branch objects representing the discrete choices.
         logits_model: LogitsModel defining the probability distribution.
-        sampling_function: Callable or random generator for sampling branches.
-                          Supports vectorized operations for efficiency.
+        sampling_function: Optional callable for custom sampling. If None, will use
+                          JAX categorical sampling with provided keys.
 
     Properties:
         num_branches: Number of branches in the problem.
@@ -141,20 +144,18 @@ class DiscreteProblem:
         ...     Branch(lambda th: th**3, lambda th: 3*th**2)
         ... ]
         >>> # Vectorized logits model
-        >>> logits_model = LogitsModel(lambda th: np.array([th, -th]))
+        >>> logits_model = LogitsModel(lambda th: jnp.array([th, -th]))
         >>> problem = DiscreteProblem(branches, logits_model)
         >>>
         >>> # Efficient computation for multiple theta values
-        >>> theta_array = np.array([0.0, 1.0, 2.0])
+        >>> theta_array = jnp.array([0.0, 1.0, 2.0])
         >>> probs = problem.compute_probabilities(theta_array)  # Shape: (2, 3)
         >>> expected = problem.compute_expected_value(theta_array)  # Shape: (3,)
     """
 
     branches: List[Branch]
     logits_model: LogitsModel
-    sampling_function: Union[Callable[[np.ndarray], int], np.random.Generator] = (
-        np.random.default_rng(0)
-    )
+    sampling_function: Optional[Callable[[jnp.ndarray], int]] = None
 
     @property
     def num_branches(self) -> int:
@@ -167,10 +168,10 @@ class DiscreteProblem:
 
     def generate_threshold_conditions(
         self,
-        theta: np.ndarray,
+        theta: jnp.ndarray,
         threshold: Optional[tuple[Optional[Bound], Optional[Bound]]],
-    ) -> np.ndarray:
-        """Generate conditions for np.piecewise based on an array of theta values
+    ) -> jnp.ndarray:
+        """Generate conditions for jnp.piecewise based on an array of theta values
         and a threshold.
 
         Args:
@@ -182,18 +183,18 @@ class DiscreteProblem:
                 - (None, None): Always active.
 
         Returns:
-            np.ndarray: Boolean array indicating whether each theta satisfies the
+            jnp.ndarray: Boolean array indicating whether each theta satisfies the
             threshold.
 
         Raises:
             ValueError: If theta is not an array.
         """
-        if not isinstance(theta, np.ndarray):
+        if not isinstance(theta, jnp.ndarray):
             raise ValueError("Theta must be a numpy array.")
         if threshold is None or threshold == (None, None):
-            return np.ones_like(theta, dtype=bool)
+            return jnp.ones_like(theta, dtype=bool)
         lower, upper = threshold
-        conditions = np.ones_like(theta, dtype=bool)
+        conditions = jnp.ones_like(theta, dtype=bool)
         if lower is not None:
             conditions &= (
                 theta >= lower.value if lower.inclusive else theta > lower.value
@@ -204,7 +205,7 @@ class DiscreteProblem:
             )
         return conditions
 
-    def compute_probabilities(self, theta: np.ndarray) -> np.ndarray:
+    def compute_probabilities(self, theta: jnp.ndarray) -> jnp.ndarray:
         """Compute the probability distribution over branches for given theta values.
 
         This method computes the logits for the given theta array, transforms them
@@ -217,7 +218,7 @@ class DiscreteProblem:
                    Shape: (N,) for N theta values
 
         Returns:
-            np.ndarray: Probability distribution over branches.
+            jnp.ndarray: Probability distribution over branches.
                        Shape: (num_branches, N) for N theta values
                        Each column sums to 1.0
 
@@ -226,7 +227,7 @@ class DiscreteProblem:
                        any theta.
 
         Examples:
-            >>> theta = np.array([0.0, 1.0, 2.0])  # Shape: (3,)
+            >>> theta = jnp.array([0.0, 1.0, 2.0])  # Shape: (3,)
             >>> probs = problem.compute_probabilities(theta)
             >>> probs.shape  # (num_branches, 3)
         """
@@ -240,7 +241,7 @@ class DiscreteProblem:
         if probabilities.ndim == 1:
             # Shape: (num_branches,) - single theta case
             prob_sums = probabilities.sum()
-            if not np.isclose(prob_sums, 1.0):
+            if not jnp.isclose(prob_sums, 1.0):
                 raise ValueError(
                     f"Probabilities do not sum to 1 for theta={theta}. "
                     f"Sum is {prob_sums:.4f}."
@@ -249,7 +250,7 @@ class DiscreteProblem:
             # Shape: (num_branches, N) - multiple theta case
             # prob_sums shape: (N,) - one sum per theta value
             prob_sums = probabilities.sum(axis=0)
-            if not np.allclose(prob_sums, 1.0):
+            if not jnp.allclose(prob_sums, 1.0):
                 raise ValueError(
                     f"Probabilities do not sum to 1 for theta={theta}. "
                     f"Sums are {prob_sums}."
@@ -257,7 +258,7 @@ class DiscreteProblem:
 
         return probabilities
 
-    def compute_function_values_deterministic(self, theta: np.ndarray) -> np.ndarray:
+    def compute_function_values_deterministic(self, theta: jnp.ndarray) -> jnp.ndarray:
         """Evaluate all branch functions at the given theta values deterministically.
 
         This method evaluates functions considering thresholds. If a branch's
@@ -276,29 +277,29 @@ class DiscreteProblem:
             ValueError: If theta is not a numpy array.
 
         Examples:
-            >>> theta = np.array([0.0, 1.0, 2.0])
+            >>> theta = jnp.array([0.0, 1.0, 2.0])
             >>> values = problem.compute_function_values_deterministic(theta)
         """
-        if not isinstance(theta, np.ndarray):
+        if not isinstance(theta, jnp.ndarray):
             raise ValueError("Theta must be a numpy array.")
 
         # Handle empty theta arrays
         if theta.size == 0:
-            return np.empty((self.num_branches, 0))
+            return jnp.empty((self.num_branches, 0))
 
         # Compute function values for each branch at all theta values
-        result = np.zeros((self.num_branches, theta.size))
+        result = jnp.zeros((self.num_branches, theta.size))
 
         for i, branch in enumerate(self.branches):
             conditions = self.generate_threshold_conditions(theta, branch.threshold)
             # Where conditions are met, compute function values; otherwise NaN
-            values = np.full_like(theta, np.nan, dtype=float)
-            values[conditions] = branch.function(theta[conditions])
-            result[i, :] = values
+            values = jnp.full_like(theta, jnp.nan, dtype=float)
+            values = values.at[conditions].set(branch.function(theta[conditions]))
+            result = result.at[i, :].set(values)
 
         return result
 
-    def compute_function_values(self, theta: np.ndarray) -> np.ndarray:
+    def compute_function_values(self, theta: jnp.ndarray) -> jnp.ndarray:
         """Evaluate all branch functions at the given theta values using
         vectorized operations.
 
@@ -311,17 +312,17 @@ class DiscreteProblem:
                    Shape: (N,) for N theta values
 
         Returns:
-            np.ndarray: Array of function values.
+            jnp.ndarray: Array of function values.
                        Shape: (num_branches, N) for N theta values
                        Each row corresponds to one branch function
 
         Examples:
-            >>> theta = np.array([0.0, 1.0, 2.0])  # Shape: (3,)
+            >>> theta = jnp.array([0.0, 1.0, 2.0])  # Shape: (3,)
             >>> values = problem.compute_function_values(theta)
             >>> values.shape  # (num_branches, 3)
         """
         # Ensure theta is an array for consistent handling
-        theta_array = np.asarray(theta)  # Shape: (N,)
+        theta_array = jnp.asarray(theta)  # Shape: (N,)
 
         results = []
         for branch in self.branches:
@@ -329,18 +330,18 @@ class DiscreteProblem:
             result = branch.function(theta_array)
 
             # Handle both scalar and array outputs from branch functions
-            if np.isscalar(result):
-                result = np.array([result])
+            if jnp.isscalar(result):
+                result = jnp.array([result])
             elif hasattr(result, "squeeze"):
                 result = result.squeeze()
                 if result.ndim == 0:  # Convert 0d array to 1d
-                    result = np.array([result])
+                    result = jnp.array([result])
             results.append(result)
 
         # Stack results to get shape: (num_branches, N)
-        return np.array(results)
+        return jnp.array(results)
 
-    def compute_derivative_values(self, theta: np.ndarray) -> Optional[np.ndarray]:
+    def compute_derivative_values(self, theta: jnp.ndarray) -> Optional[jnp.ndarray]:
         """Evaluate all branch function derivatives at the given theta values
         using vectorized operations.
 
@@ -355,14 +356,14 @@ class DiscreteProblem:
                           Returns None if any branch is missing its derivative function.
 
         Examples:
-            >>> theta = np.array([0.0, 1.0, 2.0])
+            >>> theta = jnp.array([0.0, 1.0, 2.0])
             >>> derivs = problem.compute_derivative_values(theta)
             >>> derivs.shape if derivs is not None  # (num_branches, 3)
         """
         if any(branch.derivative_function is None for branch in self.branches):
             return None
 
-        return np.array(
+        return jnp.array(
             [
                 branch.derivative_function(theta)  # type: ignore
                 for branch in self.branches
@@ -370,7 +371,7 @@ class DiscreteProblem:
             ]
         )
 
-    def compute_expected_value(self, theta: np.ndarray) -> np.ndarray:
+    def compute_expected_value(self, theta: jnp.ndarray) -> jnp.ndarray:
         """Compute the expected value of the discrete problem using vectorized
         operations.
 
@@ -382,7 +383,7 @@ class DiscreteProblem:
                    Can be scalar, 1D array, or higher dimensional.
 
         Returns:
-            np.ndarray: Expected value(s) of the discrete problem.
+            jnp.ndarray: Expected value(s) of the discrete problem.
                        Shape matches input theta shape.
                        Scalar for single theta, array for multiple theta values.
 
@@ -390,17 +391,17 @@ class DiscreteProblem:
             E[f] = sum_k p_k(theta) * f_k(theta)
 
         Examples:
-            >>> theta = np.array([0.0, 1.0, 2.0])
+            >>> theta = jnp.array([0.0, 1.0, 2.0])
             >>> expected = problem.compute_expected_value(theta)
             >>> expected.shape  # (3,)
         """
         probabilities = self.compute_probabilities(theta)
         function_values = self.compute_function_values(theta)
-        return np.sum(probabilities * function_values, axis=0)
+        return jnp.sum(probabilities * function_values, axis=0)
 
     def compute_exact_gradient(
-        self, theta: Union[float, np.ndarray]
-    ) -> Optional[Union[float, np.ndarray]]:
+        self, theta: Union[float, jnp.ndarray]
+    ) -> Optional[Union[float, jnp.ndarray]]:
         """Compute the exact gradient of the expected value with respect to theta
         using vectorized operations.
 
@@ -415,7 +416,7 @@ class DiscreteProblem:
                    Can be scalar, 1D array, or higher dimensional.
 
         Returns:
-            Union[float, np.ndarray]: Exact gradient values.
+            Union[float, jnp.ndarray]: Exact gradient values.
                                      Returns scalar for scalar input,
                                      array for array input.
                                      Returns None if any required derivative is missing.
@@ -430,7 +431,7 @@ class DiscreteProblem:
             All operations are vectorized for computational efficiency.
 
         Examples:
-            >>> theta = np.array([0.0, 1.0, 2.0])
+            >>> theta = jnp.array([0.0, 1.0, 2.0])
             >>> grad = problem.compute_exact_gradient(theta)
             >>> grad.shape if grad is not None  # (3,)
             >>>
@@ -439,7 +440,7 @@ class DiscreteProblem:
             >>> type(scalar_grad)  # float
         """
         # Convert to array for consistent handling
-        theta_array = np.asarray(theta)
+        theta_array = jnp.asarray(theta)
         is_scalar_input = theta_array.ndim == 0
 
         if is_scalar_input:
@@ -461,7 +462,7 @@ class DiscreteProblem:
 
         # Compute probability gradients using chain rule through softmax
         # For 2D arrays, compute mean along branch dimension (axis=0) for each theta
-        mean_logits_gradient = np.sum(
+        mean_logits_gradient = jnp.sum(
             probabilities * logits_gradients, axis=0, keepdims=True
         )
         probability_gradients = probabilities * (
@@ -470,8 +471,8 @@ class DiscreteProblem:
 
         # Apply policy gradient theorem
         # For 2D arrays, sum along branch dimension (axis=0)
-        function_term = np.sum(probabilities * function_derivatives, axis=0)
-        probability_term = np.sum(function_values * probability_gradients, axis=0)
+        function_term = jnp.sum(probabilities * function_derivatives, axis=0)
+        probability_term = jnp.sum(function_values * probability_gradients, axis=0)
 
         gradient_result = function_term + probability_term
 
@@ -480,90 +481,98 @@ class DiscreteProblem:
             return float(gradient_result[0])
         return gradient_result
 
-    def sample_branch(self, theta: np.ndarray, num_samples: int = 1000) -> np.ndarray:
+    def sample_branch(
+        self,
+        theta: jnp.ndarray,
+        num_samples: int = 1000,
+        key: Optional[jax.Array] = None,
+    ) -> jnp.ndarray:
         """Sample branch indices based on the probability distribution using
         vectorized operations.
 
-        Efficiently samples branches for each theta value in the input array,
-        supporting both callable sampling functions and numpy random generators.
+        Efficiently samples branches for each theta value in the input array.
+        Uses either a custom sampling function or JAX's categorical sampling.
 
         Args:
             theta: Array of parameter values at which to sample.
                    Shape: (N,) for N theta values
             num_samples: Number of samples for each theta value.
+            key: JAX random key for sampling. If None, defaults to PRNGKey(0).
 
         Returns:
-            np.ndarray: Indices of the sampled branches.
+            jnp.ndarray: Indices of the sampled branches.
                        Shape: (N, num_samples) for N theta values
                        Each row contains samples for one theta value
                        Values are integers in range [0, num_branches)
 
         Notes:
-            Uses the provided sampling function if available, otherwise defaults
-            to vectorized sampling based on probabilities using the numpy generator.
+            If sampling_function is provided, it will be used for sampling.
+            Otherwise, uses JAX's jax.random.categorical with the provided key.
             Optimized for computational efficiency with large theta arrays.
 
         Examples:
-            >>> theta = np.array([0.0, 1.0, 2.0])  # Shape: (3,)
-            >>> samples = problem.sample_branch(theta, num_samples=100)
+            >>> theta = jnp.array([0.0, 1.0, 2.0])  # Shape: (3,)
+            >>> key = jax.random.PRNGKey(42)
+            >>> samples = problem.sample_branch(theta, num_samples=100, key=key)
             >>> samples.shape  # (3, 100)
         """
         # probabilities shape: (num_branches, N) where N = len(theta)
         probabilities = self.compute_probabilities(theta)
 
-        match self.sampling_function:
-            case func if callable(func):
-                # Case 1: sampling_function is a Callable
-                if probabilities.ndim == 1:
-                    # Single theta case: probabilities shape (num_branches,)
-                    # Output shape: (num_samples,)
-                    samples = np.fromiter(
-                        (func(probabilities) for _ in range(num_samples)), dtype=int
-                    )
-                else:
-                    # Multiple theta case: probabilities shape (num_branches, N)
-                    # Output shape: (N, num_samples)
-                    samples = np.array(
-                        [
-                            np.fromiter(
-                                (func(probabilities[:, i]) for _ in range(num_samples)),
-                                dtype=int,
-                            )
-                            for i in range(theta.shape[0])
-                        ]
-                    )
-                return samples
-
-            case generator if isinstance(generator, np.random.Generator):
-                # Case 2: sampling_function is a np.random.Generator - can
-                # vectorize this
-                if probabilities.ndim == 1:
-                    # Single theta case
-                    return generator.choice(
-                        self.num_branches, size=num_samples, p=probabilities
-                    )
-                else:
-                    # Multiple theta case - vectorized sampling
-                    samples = np.array(
-                        [
-                            generator.choice(
-                                self.num_branches,
-                                size=num_samples,
-                                p=probabilities[:, i],
-                            )
-                            for i in range(theta.shape[0])
-                        ]
-                    )
-                    return samples
-            case _:
-                raise ValueError(
-                    "sampling_function must be either a Callable or a "
-                    "np.random.Generator."
+        if self.sampling_function is not None:
+            # Use custom sampling function
+            if probabilities.ndim == 1:
+                # Single theta case: probabilities shape (num_branches,)
+                # Output shape: (num_samples,)
+                samples = jnp.array(
+                    [self.sampling_function(probabilities) for _ in range(num_samples)]
                 )
+            else:
+                # Multiple theta case: probabilities shape (num_branches, N)
+                # Output shape: (N, num_samples)
+                samples = jnp.array(
+                    [
+                        jnp.array(
+                            [
+                                self.sampling_function(probabilities[:, i])
+                                for _ in range(num_samples)
+                            ]
+                        )
+                        for i in range(theta.shape[0])
+                    ]
+                )
+            return samples
+        else:
+            # Use JAX categorical sampling
+            if key is None:
+                key = jax.random.PRNGKey(0)  # Default key for reproducibility
+
+            if probabilities.ndim == 1:
+                # Single theta case: probabilities shape (num_branches,)
+                # Use jax.random.categorical which expects log probabilities
+                logits = jnp.log(
+                    probabilities + 1e-8
+                )  # Add small epsilon for numerical stability
+                return jax.random.categorical(key, logits, shape=(num_samples,))
+            else:
+                # Multiple theta case: probabilities shape (num_branches, N)
+                # Need to handle each theta separately
+                keys = jax.random.split(key, theta.shape[0])
+                samples = []
+                for i in range(theta.shape[0]):
+                    logits = jnp.log(probabilities[:, i] + 1e-8)
+                    sample = jax.random.categorical(
+                        keys[i], logits, shape=(num_samples,)
+                    )
+                    samples.append(sample)
+                return jnp.array(samples)
 
     def compute_stochastic_values(
-        self, theta: Union[float, np.ndarray], num_samples: int = 1000
-    ) -> np.ndarray:
+        self,
+        theta: Union[float, jnp.ndarray],
+        num_samples: int = 1000,
+        key: Optional[jax.Array] = None,
+    ) -> jnp.ndarray:
         """Compute stochastic values of the discrete problem using vectorized sampling.
 
         This method samples branches based on the probability distribution and
@@ -574,36 +583,40 @@ class DiscreteProblem:
             theta: Parameter value(s) at which to evaluate.
                    Can be scalar, 1D array, or higher dimensional.
             num_samples: Number of samples for each theta value.
+            key: JAX random key for sampling. If None, defaults to PRNGKey(0).
 
         Returns:
-            np.ndarray: Stochastic values of the discrete problem.
+            jnp.ndarray: Stochastic values of the discrete problem.
                        Shape (1, num_samples) for scalar theta input.
                        Shape (len(theta), num_samples) for array theta input.
 
         Examples:
-            >>> theta = np.array([0.0, 1.0, 2.0])
+            >>> theta = jnp.array([0.0, 1.0, 2.0])
+            >>> key = jax.random.PRNGKey(42)
             >>> stoch_vals = problem.compute_stochastic_values(
-            ...     theta, num_samples=100
+            ...     theta, num_samples=100, key=key
             ... )
             >>> stoch_vals.shape  # (3, 100)
 
             >>> scalar_theta = 1.5
             >>> stoch_vals = problem.compute_stochastic_values(
-            ...     scalar_theta, num_samples=100
+            ...     scalar_theta, num_samples=100, key=key
             ... )
             >>> stoch_vals.shape  # (1, 100)
         """
         # Convert to array for consistent handling
-        theta_array = np.asarray(theta)
+        theta_array = jnp.asarray(theta)
         if theta_array.ndim == 0:  # Handle scalar input
             theta_array = theta_array.reshape(1)
 
         # Handle empty array input
         if theta_array.size == 0:
-            return np.empty((0, num_samples))
+            return jnp.empty((0, num_samples))
 
-        # Sample branch indices using the custom sampling function
-        sampled_branches = self.sample_branch(theta_array, num_samples=num_samples)
+        # Sample branch indices using the sampling function or JAX
+        sampled_branches = self.sample_branch(
+            theta_array, num_samples=num_samples, key=key
+        )
 
         # Precompute function values for all branches
         function_values_at_choices = self.compute_function_values(theta_array)
@@ -622,7 +635,7 @@ class DiscreteProblem:
                     sampled_branches, 0
                 ]
             else:
-                sampled_function_values = np.array(
+                sampled_function_values = jnp.array(
                     [
                         function_values_at_choices[sampled_branches[i], i]
                         for i in range(theta_array.shape[0])
