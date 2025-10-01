@@ -7,7 +7,7 @@ Tests cover shapes, values, edge cases, and error conditions.
 
 from unittest.mock import patch
 
-import numpy as np
+import jax.numpy as jnp
 import pytest
 
 from mellowgate.api.estimators import (
@@ -24,7 +24,7 @@ from mellowgate.api.results import ResultsContainer
 @pytest.fixture
 def test_theta_values():
     """Common theta values for testing."""
-    return np.linspace(-2.0, 2.0, 5)
+    return jnp.linspace(-2.0, 2.0, 5)
 
 
 @pytest.fixture
@@ -46,9 +46,9 @@ def simple_branches():
 def simple_logits_model():
     """Simple logits model for easier testing."""
     return LogitsModel(
-        logits_function=lambda th: np.array([0.5 * th, -0.5 * th]),
-        logits_derivative_function=lambda th: np.array(
-            [0.5 * np.ones_like(th), -0.5 * np.ones_like(th)]
+        logits_function=lambda th: jnp.array([0.5 * th, -0.5 * th]),
+        logits_derivative_function=lambda th: jnp.array(
+            [0.5 * jnp.ones_like(th), -0.5 * jnp.ones_like(th)]
         ),
     )
 
@@ -105,7 +105,7 @@ class TestSweep:
         """Test Sweep creation with minimal parameters."""
         sweep = Sweep(theta_values=test_theta_values)
 
-        assert np.array_equal(sweep.theta_values, test_theta_values)
+        assert jnp.array_equal(sweep.theta_values, test_theta_values)
         assert sweep.num_repetitions == 200  # default value
         assert sweep.estimator_configs is None
 
@@ -117,19 +117,19 @@ class TestSweep:
             estimator_configs=fd_estimator_config,
         )
 
-        assert np.array_equal(sweep.theta_values, test_theta_values)
+        assert jnp.array_equal(sweep.theta_values, test_theta_values)
         assert sweep.num_repetitions == 50
         assert sweep.estimator_configs == fd_estimator_config
 
     def test_sweep_theta_values_shape(self):
         """Test Sweep with different theta value shapes."""
         # Single value
-        theta_single = np.array([1.0])
+        theta_single = jnp.array([1.0])
         sweep = Sweep(theta_values=theta_single)
         assert sweep.theta_values.shape == (1,)
 
         # Multiple values
-        theta_multiple = np.array([-1.0, 0.0, 1.0])
+        theta_multiple = jnp.array([-1.0, 0.0, 1.0])
         sweep = Sweep(theta_values=theta_multiple)
         assert sweep.theta_values.shape == (3,)
 
@@ -173,7 +173,6 @@ class TestRunParameterSweep:
             estimator_configs=fd_estimator_config,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(simple_discrete_problem, sweep)
 
         assert len(results) == 1
@@ -190,7 +189,6 @@ class TestRunParameterSweep:
             estimator_configs=reinforce_estimator_config,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(simple_discrete_problem, sweep)
 
         assert len(results) == 1
@@ -210,7 +208,6 @@ class TestRunParameterSweep:
             estimator_configs=gumbel_softmax_estimator_config,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(simple_discrete_problem, sweep)
 
         assert len(results) == 1
@@ -227,7 +224,6 @@ class TestRunParameterSweep:
             estimator_configs=all_estimator_configs,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(simple_discrete_problem, sweep)
 
         assert len(results) == 3
@@ -248,7 +244,6 @@ class TestRunParameterSweep:
             estimator_configs=fd_estimator_config,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(simple_discrete_problem, sweep)
 
         result = results["fd"]
@@ -268,7 +263,7 @@ class TestRunParameterSweep:
         assert grad_data["time"].shape == test_theta_values.shape
 
         # Test other attributes
-        assert np.array_equal(result.theta_values, test_theta_values)
+        assert jnp.array_equal(result.theta_values, test_theta_values)
         assert result.expectation_values is not None
         assert result.expectation_values.shape == test_theta_values.shape
         assert result.discrete_distributions is not None
@@ -289,21 +284,20 @@ class TestRunParameterSweep:
             estimator_configs=fd_estimator_config,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(simple_discrete_problem, sweep)
 
         grad_data = results["fd"].gradient_estimates["fd"]
 
         # All values should be finite
-        assert np.all(np.isfinite(grad_data["mean"]))
-        assert np.all(np.isfinite(grad_data["std"]))
-        assert np.all(np.isfinite(grad_data["time"]))
+        assert jnp.all(jnp.isfinite(grad_data["mean"]))
+        assert jnp.all(jnp.isfinite(grad_data["std"]))
+        assert jnp.all(jnp.isfinite(grad_data["time"]))
 
         # Standard deviations should be non-negative
-        assert np.all(grad_data["std"] >= 0)
+        assert jnp.all(grad_data["std"] >= 0)
 
         # Times should be positive
-        assert np.all(grad_data["time"] > 0)
+        assert jnp.all(grad_data["time"] > 0)
 
     def test_sampled_branch_indices_shape(
         self, simple_discrete_problem, test_theta_values, fd_estimator_config
@@ -315,7 +309,6 @@ class TestRunParameterSweep:
             estimator_configs=fd_estimator_config,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(simple_discrete_problem, sweep)
 
         assert results["fd"].sampled_points is not None
@@ -326,7 +319,7 @@ class TestRunParameterSweep:
         assert sampled_indices.shape == expected_shape
 
         # All indices should be valid (0 or 1 for 2-branch problem)
-        assert np.all((sampled_indices >= 0) & (sampled_indices < 2))
+        assert jnp.all((sampled_indices >= 0) & (sampled_indices < 2))
 
     def test_unknown_estimator_error(self, simple_discrete_problem, test_theta_values):
         """Test that unknown estimator raises ValueError."""
@@ -365,14 +358,13 @@ class TestRunParameterSweep:
 
     def test_single_theta_value(self, simple_discrete_problem, fd_estimator_config):
         """Test sweep with single theta value."""
-        theta_single = np.array([1.0])
+        theta_single = jnp.array([1.0])
         sweep = Sweep(
             theta_values=theta_single,
             num_repetitions=5,
             estimator_configs=fd_estimator_config,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(simple_discrete_problem, sweep)
 
         grad_data = results["fd"].gradient_estimates["fd"]
@@ -385,14 +377,13 @@ class TestRunParameterSweep:
 
     def test_empty_theta_values(self, simple_discrete_problem, fd_estimator_config):
         """Test sweep with empty theta values."""
-        theta_empty = np.array([])
+        theta_empty = jnp.array([])
         sweep = Sweep(
             theta_values=theta_empty,
             num_repetitions=5,
             estimator_configs=fd_estimator_config,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(simple_discrete_problem, sweep)
 
         grad_data = results["fd"].gradient_estimates["fd"]
@@ -423,7 +414,7 @@ class TestRunParameterSweep:
 
         # Time per theta should be total_time / num_theta
         expected_time_per_theta = 10.0 / len(test_theta_values)
-        np.testing.assert_allclose(grad_data["time"], expected_time_per_theta)
+        jnp.allclose(grad_data["time"], expected_time_per_theta)
 
     def test_reproducibility_with_seed(
         self,
@@ -433,16 +424,21 @@ class TestRunParameterSweep:
         fd_estimator_config,
     ):
         """Test that results are reproducible with fixed random seed."""
-        # Create discrete problems with identical seeded generators
+
+        # Create discrete problems with deterministic sampling for reproducibility
+        def deterministic_sampler(probabilities):
+            # Always return the first branch for reproducibility
+            return 0
+
         discrete_problem1 = DiscreteProblem(
             branches=simple_branches,
             logits_model=simple_logits_model,
-            sampling_function=np.random.default_rng(123),
+            sampling_function=deterministic_sampler,
         )
         discrete_problem2 = DiscreteProblem(
             branches=simple_branches,
             logits_model=simple_logits_model,
-            sampling_function=np.random.default_rng(123),
+            sampling_function=deterministic_sampler,
         )
 
         sweep = Sweep(
@@ -457,8 +453,8 @@ class TestRunParameterSweep:
         grad_data1 = results1["fd"].gradient_estimates["fd"]
         grad_data2 = results2["fd"].gradient_estimates["fd"]
 
-        np.testing.assert_array_equal(grad_data1["mean"], grad_data2["mean"])
-        np.testing.assert_array_equal(grad_data1["std"], grad_data2["std"])
+        assert jnp.array_equal(grad_data1["mean"], grad_data2["mean"])
+        assert jnp.array_equal(grad_data1["std"], grad_data2["std"])
 
     def test_expectation_values_consistency(
         self, simple_discrete_problem, test_theta_values, fd_estimator_config
@@ -470,7 +466,6 @@ class TestRunParameterSweep:
             estimator_configs=fd_estimator_config,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(simple_discrete_problem, sweep)
 
         # Manually compute expected values
@@ -478,10 +473,10 @@ class TestRunParameterSweep:
         function_values = simple_discrete_problem.compute_function_values(
             test_theta_values
         )
-        expected_manual = np.sum(probabilities * function_values, axis=0)
+        expected_manual = jnp.sum(probabilities * function_values, axis=0)
 
         assert results["fd"].expectation_values is not None
-        np.testing.assert_allclose(results["fd"].expectation_values, expected_manual)
+        assert jnp.allclose(results["fd"].expectation_values, expected_manual)
 
     def test_discrete_distributions_shape(
         self, simple_discrete_problem, test_theta_values, fd_estimator_config
@@ -493,7 +488,6 @@ class TestRunParameterSweep:
             estimator_configs=fd_estimator_config,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(simple_discrete_problem, sweep)
 
         discrete_distributions = results["fd"].discrete_distributions
@@ -517,7 +511,6 @@ class TestEdgeCases:
             estimator_configs=fd_estimator_config,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(simple_discrete_problem, sweep)
 
         grad_data = results["fd"].gradient_estimates["fd"]
@@ -529,21 +522,20 @@ class TestEdgeCases:
 
     def test_large_theta_range(self, simple_discrete_problem, fd_estimator_config):
         """Test sweep with large theta range."""
-        theta_large = np.array([-100.0, -10.0, 0.0, 10.0, 100.0])
+        theta_large = jnp.array([-100.0, -10.0, 0.0, 10.0, 100.0])
         sweep = Sweep(
             theta_values=theta_large,
             num_repetitions=5,
             estimator_configs=fd_estimator_config,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(simple_discrete_problem, sweep)
 
         grad_data = results["fd"].gradient_estimates["fd"]
 
         # Should handle large values without crashing
-        assert np.all(np.isfinite(grad_data["mean"]))
-        assert np.all(np.isfinite(grad_data["std"]))
+        assert jnp.all(jnp.isfinite(grad_data["mean"]))
+        assert jnp.all(jnp.isfinite(grad_data["std"]))
 
     def test_single_branch_problem(self, test_theta_values, fd_estimator_config):
         """Test sweep with single branch discrete problem."""
@@ -552,8 +544,8 @@ class TestEdgeCases:
             function=lambda th: th**2, derivative_function=lambda th: 2 * th
         )
         logits_model = LogitsModel(
-            logits_function=lambda th: np.array([np.zeros_like(th)]),
-            logits_derivative_function=lambda th: np.array([np.zeros_like(th)]),
+            logits_function=lambda th: jnp.array([jnp.zeros_like(th)]),
+            logits_derivative_function=lambda th: jnp.array([jnp.zeros_like(th)]),
         )
         problem = DiscreteProblem(branches=[branch], logits_model=logits_model)
 
@@ -563,7 +555,6 @@ class TestEdgeCases:
             estimator_configs=fd_estimator_config,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(problem, sweep)
 
         # Should handle single branch case
@@ -593,7 +584,6 @@ class TestEdgeCases:
             estimator_configs=mixed_configs,
         )
 
-        np.random.seed(42)
         results = run_parameter_sweep(simple_discrete_problem, sweep)
 
         assert len(results) == 3

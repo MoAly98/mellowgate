@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-import numpy as np
+import jax.numpy as jnp
 
 from mellowgate.api.estimators import (
     ReinforceState,
@@ -29,7 +29,7 @@ from mellowgate.api.functions import DiscreteProblem
 from mellowgate.api.results import ResultsContainer
 from mellowgate.logging import logger
 
-ArrayType = np.ndarray
+ArrayType = jnp.ndarray
 
 
 @dataclass
@@ -54,7 +54,7 @@ class Sweep:
         >>> from mellowgate.api.estimators import FiniteDifferenceConfig
         >>>
         >>> sweep = Sweep(
-        ...     theta_values=np.linspace(-2, 2, 10),
+        ...     theta_values=jnp.linspace(-2, 2, 10),
         ...     num_repetitions=100,
         ...     estimator_configs={
         ...         "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3)}
@@ -146,27 +146,27 @@ def run_parameter_sweep(
 
         # Convert to numpy array: shape (num_repetitions, num_theta_values)
         if len(gradient_samples) > 0:
-            gradient_samples = np.array(gradient_samples)
+            gradient_samples = jnp.array(gradient_samples)
             # Compute statistics across repetitions (axis=0)
             sample_mean = gradient_samples.mean(axis=0)  # Mean across repetitions
             sample_std = gradient_samples.std(axis=0, ddof=1)  # Std across repetitions
         else:
             # Handle zero repetitions case
             theta_shape = sweep_config.theta_values.shape
-            sample_mean = np.full(theta_shape, np.nan)
-            sample_std = np.full(theta_shape, np.nan)
+            sample_mean = jnp.full(theta_shape, jnp.nan)
+            sample_std = jnp.full(theta_shape, jnp.nan)
 
         # Record timing for the entire batch
         elapsed_time = time.time() - start_time
 
         # Compute timing per theta value for backwards compatibility
         if len(sweep_config.theta_values) > 0:
-            times_array = np.full(
+            times_array = jnp.full(
                 len(sweep_config.theta_values),
                 elapsed_time / len(sweep_config.theta_values),
             )
         else:
-            times_array = np.array([])
+            times_array = jnp.array([])
 
         # Log total time for the current estimator
         logger.info(
