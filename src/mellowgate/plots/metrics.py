@@ -11,8 +11,8 @@ the trade-offs between different estimation approaches.
 
 from typing import Callable, Optional, Union
 
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
-import numpy as np
 
 from mellowgate.api.results import ResultsContainer
 from mellowgate.logging import logger
@@ -22,7 +22,7 @@ from mellowgate.utils.outputs import OutputManager
 def plot_gradient_estimates_vs_truth(
     results_dict: dict[str, ResultsContainer],
     true_gradient_function: Callable[
-        [Union[float, np.ndarray]], Union[Optional[float], Optional[np.ndarray]]
+        [Union[float, jnp.ndarray]], Union[Optional[float], Optional[jnp.ndarray]]
     ],
     output_manager: OutputManager,
     plot_title: Optional[str] = None,
@@ -70,8 +70,8 @@ def plot_gradient_estimates_vs_truth(
             std_estimates = estimator_results["std"]
 
             # Ensure mean and std estimates are 1D arrays
-            mean_estimates = np.squeeze(mean_estimates)
-            std_estimates = np.squeeze(std_estimates)
+            mean_estimates = jnp.squeeze(mean_estimates)
+            std_estimates = jnp.squeeze(std_estimates)
 
             # Plot mean with error bars
             plt.plot(
@@ -95,10 +95,10 @@ def plot_gradient_estimates_vs_truth(
             )
         else:
             # Handle both scalar and array returns
-            if np.isscalar(true_gradients):
-                true_gradients = np.full_like(theta_values, true_gradients)
+            if jnp.isscalar(true_gradients):
+                true_gradients = jnp.full_like(theta_values, true_gradients)
             else:
-                true_gradients = np.squeeze(true_gradients)
+                true_gradients = jnp.squeeze(true_gradients)
 
             plt.plot(
                 theta_values,
@@ -129,7 +129,7 @@ def plot_gradient_estimates_vs_truth(
 def plot_bias_variance_mse_analysis(
     results_dict: dict[str, ResultsContainer],
     true_gradient_function: Callable[
-        [Union[float, np.ndarray]], Union[Optional[float], Optional[np.ndarray]]
+        [Union[float, jnp.ndarray]], Union[Optional[float], Optional[jnp.ndarray]]
     ],
     output_manager: OutputManager,
     plot_title: Optional[str] = None,
@@ -179,10 +179,10 @@ def plot_bias_variance_mse_analysis(
             return
 
         # Handle both scalar and array returns
-        if np.isscalar(true_gradients):
-            true_gradients = np.full_like(theta_values, true_gradients)
+        if jnp.isscalar(true_gradients):
+            true_gradients = jnp.full_like(theta_values, true_gradients)
         else:
-            true_gradients = np.squeeze(true_gradients)
+            true_gradients = jnp.squeeze(true_gradients)
 
     except Exception as e:
         logger.warning(
@@ -197,18 +197,18 @@ def plot_bias_variance_mse_analysis(
             std_estimates = estimator_results["std"]
 
             # Ensure mean and std estimates are 1D arrays
-            mean_estimates = np.squeeze(mean_estimates)
-            std_estimates = np.squeeze(std_estimates)
+            mean_estimates = jnp.squeeze(mean_estimates)
+            std_estimates = jnp.squeeze(std_estimates)
 
             # Compute bias, variance, and MSE
-            bias_values = np.abs(mean_estimates - true_gradients)
+            bias_values = jnp.abs(mean_estimates - true_gradients)
             variance_values = std_estimates**2
             mse_values = bias_values**2 + variance_values
 
             # Ensure computed arrays are 1D
-            bias_values = np.squeeze(bias_values)
-            variance_values = np.squeeze(variance_values)
-            mse_values = np.squeeze(mse_values)
+            bias_values = jnp.squeeze(bias_values)
+            variance_values = jnp.squeeze(variance_values)
+            mse_values = jnp.squeeze(mse_values)
 
             # Plot on log scale (add small epsilon to avoid log(0))
             epsilon = 1e-10
@@ -259,7 +259,7 @@ def plot_computational_time_analysis(
             time_values = estimator_results["time"]
 
             # Ensure time values are 1D arrays
-            time_values = np.squeeze(time_values)
+            time_values = jnp.squeeze(time_values)
 
             plt.semilogy(
                 theta_values, time_values, marker="o", label=f"{estimator_name}"

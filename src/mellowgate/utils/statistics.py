@@ -13,7 +13,6 @@ from typing import Tuple, Union
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 
 ShapeType = Union[int, Tuple[int, ...]]
 
@@ -56,7 +55,7 @@ def sample_gumbel(shape: ShapeType, key: jax.Array) -> jnp.ndarray:
     return -jnp.log(-jnp.log(uniform_samples + 1e-8))
 
 
-def sigmoid_2d(logits: np.ndarray) -> np.ndarray:
+def sigmoid_2d(logits: jnp.ndarray) -> jnp.ndarray:
     """Custom sigmoid function for 2D arrays.
 
     Args:
@@ -72,5 +71,5 @@ def sigmoid_2d(logits: np.ndarray) -> np.ndarray:
         [[0.73105858 0.88079708]
          [0.95257413 0.98201379]]
     """
-    exp_logits = np.exp(-logits)
+    exp_logits = jnp.exp(-logits)
     return 1 / (1 + exp_logits)
