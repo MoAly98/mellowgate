@@ -62,10 +62,10 @@ def sigmoid_2d(logits: jnp.ndarray) -> jnp.ndarray:
         logits: A 2D array of logits with shape (num_branches, num_samples).
 
     Returns:
-        numpy.ndarray: Sigmoid probabilities with the same shape as logits.
+        jax.numpy.ndarray: Sigmoid probabilities with the same shape as logits.
 
     Examples:
-        >>> logits = np.array([[1, 2], [3, 4]])
+        >>> logits = jnp.array([[1, 2], [3, 4]])
         >>> probabilities = sigmoid_2d(logits)
         >>> print(probabilities)
         [[0.73105858 0.88079708]

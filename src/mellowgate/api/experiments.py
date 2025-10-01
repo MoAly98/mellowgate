@@ -51,7 +51,7 @@ class Sweep:
                           a 'state' key for stateful estimators like REINFORCE.
 
     Examples:
-        >>> import numpy as np
+        >>> import jax.numpy as jnp
         >>> from mellowgate.api.estimators import FiniteDifferenceConfig
         >>>
         >>> sweep = Sweep(

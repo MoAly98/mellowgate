@@ -68,7 +68,7 @@ class Branch:
                    - (None, None): Always active.
 
     Examples:
-        >>> import numpy as np
+        >>> import jax.numpy as jnp
         >>> # Vectorized branch with trigonometric function
         >>> cos_branch = Branch(
         ...     function=lambda theta: jnp.cos(theta),
@@ -98,7 +98,7 @@ class LogitsModel:
                               Defaults to vectorized softmax with appropriate axis.
 
     Examples:
-        >>> import numpy as np
+        >>> import jax.numpy as jnp
         >>> # Vectorized logits model
         >>> logits_model = LogitsModel(
         ...     logits_function=lambda theta: jnp.array([theta, -theta]),
@@ -137,7 +137,7 @@ class DiscreteProblem:
         num_branches: Number of branches in the problem.
 
     Examples:
-        >>> import numpy as np
+        >>> import jax.numpy as jnp
         >>> # Vectorized branches
         >>> branches = [
         ...     Branch(lambda th: th**2, lambda th: 2*th),
@@ -270,7 +270,7 @@ class DiscreteProblem:
             theta: Array of parameter values at which to evaluate functions.
 
         Returns:
-            numpy.ndarray: Array of function values.
+            jax.numpy.ndarray: Array of function values.
                           Shape matches input theta for threshold-aware evaluation.
 
         Raises:
@@ -350,7 +350,7 @@ class DiscreteProblem:
                    Can be scalar, 1D array, or higher dimensional.
 
         Returns:
-            numpy.ndarray: Array of derivative values.
+            jax.numpy.ndarray: Array of derivative values.
                           Shape (num_branches,) for single theta value.
                           Shape (num_branches, num_theta) for array of theta values.
                           Returns None if any branch is missing its derivative function.
