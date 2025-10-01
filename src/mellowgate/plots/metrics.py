@@ -11,8 +11,8 @@ the trade-offs between different estimation approaches.
 
 from typing import Callable, Optional, Union
 
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
-import numpy as np
 
 from mellowgate.api.results import ResultsContainer
 from mellowgate.logging import logger
@@ -22,7 +22,7 @@ from mellowgate.utils.outputs import OutputManager
 def plot_gradient_estimates_vs_truth(
     results_dict: dict[str, ResultsContainer],
     true_gradient_function: Callable[
-        [Union[float, np.ndarray]], Union[Optional[float], Optional[np.ndarray]]
+        [Union[float, jnp.ndarray]], Union[Optional[float], Optional[jnp.ndarray]]
     ],
     output_manager: OutputManager,
     plot_title: Optional[str] = None,
@@ -63,26 +63,45 @@ def plot_gradient_estimates_vs_truth(
     first_result = next(iter(results_dict.values()))
     theta_values = first_result.theta_values
 
+    # Define distinct colors for each estimator
+    import matplotlib.cm as cm
+
+    tab10_cmap = cm.get_cmap("tab10")
+    colors = [tab10_cmap(i) for i in range(10)]  # Get 10 distinct colors from tab10
+
     # Plot each estimator's results
+    color_idx = 0
     for estimator_name, results in results_dict.items():
         for estimator_name, estimator_results in results.gradient_estimates.items():
             mean_estimates = estimator_results["mean"]
             std_estimates = estimator_results["std"]
 
             # Ensure mean and std estimates are 1D arrays
-            mean_estimates = np.squeeze(mean_estimates)
-            std_estimates = np.squeeze(std_estimates)
+            mean_estimates = jnp.squeeze(mean_estimates)
+            std_estimates = jnp.squeeze(std_estimates)
+
+            # Get color for this estimator
+            color = colors[color_idx % len(colors)]
 
             # Plot mean with error bars
             plt.plot(
-                theta_values, mean_estimates, marker="o", label=f"{estimator_name}"
+                theta_values,
+                mean_estimates,
+                marker="o",
+                color=color,
+                label=f"{estimator_name}",
+                markersize=3,
+                linewidth=1.5,
             )
             plt.fill_between(
                 theta_values,
                 mean_estimates - std_estimates,
                 mean_estimates + std_estimates,
+                color=color,
                 alpha=0.15,
             )
+
+            color_idx += 1
 
     # Plot true gradient if available - use vectorized call
     try:
@@ -95,16 +114,16 @@ def plot_gradient_estimates_vs_truth(
             )
         else:
             # Handle both scalar and array returns
-            if np.isscalar(true_gradients):
-                true_gradients = np.full_like(theta_values, true_gradients)
+            if jnp.isscalar(true_gradients):
+                true_gradients = jnp.full_like(theta_values, true_gradients)
             else:
-                true_gradients = np.squeeze(true_gradients)
+                true_gradients = jnp.squeeze(true_gradients)
 
             plt.plot(
                 theta_values,
                 true_gradients,
                 "r--",
-                linewidth=2,
+                linewidth=1,
                 label="analytical gradient",
             )
     except Exception as e:
@@ -129,7 +148,7 @@ def plot_gradient_estimates_vs_truth(
 def plot_bias_variance_mse_analysis(
     results_dict: dict[str, ResultsContainer],
     true_gradient_function: Callable[
-        [Union[float, np.ndarray]], Union[Optional[float], Optional[np.ndarray]]
+        [Union[float, jnp.ndarray]], Union[Optional[float], Optional[jnp.ndarray]]
     ],
     output_manager: OutputManager,
     plot_title: Optional[str] = None,
@@ -179,10 +198,10 @@ def plot_bias_variance_mse_analysis(
             return
 
         # Handle both scalar and array returns
-        if np.isscalar(true_gradients):
-            true_gradients = np.full_like(theta_values, true_gradients)
+        if jnp.isscalar(true_gradients):
+            true_gradients = jnp.full_like(theta_values, true_gradients)
         else:
-            true_gradients = np.squeeze(true_gradients)
+            true_gradients = jnp.squeeze(true_gradients)
 
     except Exception as e:
         logger.warning(
@@ -191,46 +210,102 @@ def plot_bias_variance_mse_analysis(
         )
         return
 
+    # Define distinct colors and line styles for each estimator and metric
+    import matplotlib.cm as cm
+    import matplotlib.colors as mcolors
+
+    tab10_cmap = cm.get_cmap("tab10")
+    base_colors = [
+        tab10_cmap(i) for i in range(10)
+    ]  # Get 10 distinct base colors from tab10
+
+    def create_color_variations(base_color):
+        """Create 3 visually distinct variations of the same base color."""
+        # Convert to HSV to manipulate saturation and value
+        hsv = mcolors.rgb_to_hsv(base_color[:3])
+
+        # Create variations: dark, medium, light
+        dark = mcolors.hsv_to_rgb(
+            [hsv[0], min(1.0, hsv[1] * 1.2), hsv[2] * 0.7]
+        )  # More saturated, darker
+        medium = base_color[:3]  # Original color
+        light = mcolors.hsv_to_rgb(
+            [hsv[0], hsv[1] * 0.6, min(1.0, hsv[2] * 1.2)]
+        )  # Less saturated, lighter
+
+        return {
+            "bias": dark,  # Darkest for bias
+            "variance": medium,  # Medium for variance
+            "mse": light,  # Lightest for MSE
+        }
+
+    line_styles = {
+        "bias": "-",  # Solid line for bias
+        "variance": "--",  # Dashed line for variance
+        "mse": ":",  # Dotted line for MSE
+    }
+
+    color_idx = 0
     for estimator_name, results in results_dict.items():
         for estimator_name, estimator_results in results.gradient_estimates.items():
             mean_estimates = estimator_results["mean"]
             std_estimates = estimator_results["std"]
 
             # Ensure mean and std estimates are 1D arrays
-            mean_estimates = np.squeeze(mean_estimates)
-            std_estimates = np.squeeze(std_estimates)
+            mean_estimates = jnp.squeeze(mean_estimates)
+            std_estimates = jnp.squeeze(std_estimates)
 
             # Compute bias, variance, and MSE
-            bias_values = np.abs(mean_estimates - true_gradients)
+            bias_values = jnp.abs(mean_estimates - true_gradients)
             variance_values = std_estimates**2
             mse_values = bias_values**2 + variance_values
 
             # Ensure computed arrays are 1D
-            bias_values = np.squeeze(bias_values)
-            variance_values = np.squeeze(variance_values)
-            mse_values = np.squeeze(mse_values)
+            bias_values = jnp.squeeze(bias_values)
+            variance_values = jnp.squeeze(variance_values)
+            mse_values = jnp.squeeze(mse_values)
+
+            # Get base color for this estimator and create variations
+            base_color = base_colors[color_idx % len(base_colors)]
+            color_variations = create_color_variations(base_color)
 
             # Plot on log scale (add small epsilon to avoid log(0))
             epsilon = 1e-10
             plt.semilogy(
-                theta_values, bias_values + epsilon, label=f"{estimator_name} bias"
+                theta_values,
+                bias_values + epsilon,
+                linestyle=line_styles["bias"],
+                color=color_variations["bias"],
+                linewidth=1.5,
+                label=f"{estimator_name} bias",
             )
             plt.semilogy(
                 theta_values,
-                std_estimates + epsilon,
-                "--",
-                label=f"{estimator_name} std",
+                variance_values + epsilon,
+                linestyle=line_styles["variance"],
+                color=color_variations["variance"],
+                linewidth=1.5,
+                label=f"{estimator_name} variance",
             )
             plt.semilogy(
-                theta_values, mse_values + epsilon, ":", label=f"{estimator_name} MSE"
+                theta_values,
+                mse_values + epsilon,
+                linestyle=line_styles["mse"],
+                color=color_variations["mse"],
+                linewidth=1.5,
+                label=f"{estimator_name} MSE",
             )
+
+            color_idx += 1
 
     # Format and save plot
     plt.xlabel("theta")
     plt.ylabel("magnitude (log scale)")
     plt.title(plot_title)
-    plt.legend(frameon=False, ncol=3)
     plt.grid(alpha=0.4)
+
+    # Place legend below the x-axis label
+    plt.legend(frameon=False, ncol=3, bbox_to_anchor=(0.5, -0.2), loc="upper center")
     plt.tight_layout()
 
     output_path = output_manager.get_path(output_subdirectory, filename=output_filename)
@@ -253,17 +328,35 @@ def plot_computational_time_analysis(
 
     plt.figure(figsize=(7, 4))
 
+    # Define distinct colors for each estimator
+    import matplotlib.cm as cm
+
+    tab10_cmap = cm.get_cmap("tab10")
+    colors = [tab10_cmap(i) for i in range(10)]  # Get 10 distinct colors from tab10
+
+    color_idx = 0
     for estimator_name, results in results_dict.items():
         for estimator_name, estimator_results in results.gradient_estimates.items():
             theta_values = results.theta_values
             time_values = estimator_results["time"]
 
             # Ensure time values are 1D arrays
-            time_values = np.squeeze(time_values)
+            time_values = jnp.squeeze(time_values)
+
+            # Get color for this estimator
+            color = colors[color_idx % len(colors)]
 
             plt.semilogy(
-                theta_values, time_values, marker="o", label=f"{estimator_name}"
+                theta_values,
+                time_values,
+                marker="o",
+                color=color,
+                label=f"{estimator_name}",
+                markersize=4,
+                linewidth=1.5,
             )
+
+            color_idx += 1
 
     # Format and save plot
     plt.xlabel("theta")

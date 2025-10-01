@@ -3,7 +3,8 @@ import cProfile
 import pstats
 from io import StringIO
 
-import numpy as np
+import jax
+import jax.numpy as jnp
 
 from mellowgate.api.estimators import (
     FiniteDifferenceConfig,
@@ -25,40 +26,21 @@ from mellowgate.utils.outputs import OutputManager
 # Initialise output manager for this script
 output_manager = OutputManager(base_directory="outputs")
 
-# branches
-branches = [
-    Branch(
-        function=lambda th: np.sin(th),
-        derivative_function=lambda th: -np.sin(th),
-        threshold=(None, Bound(-1, inclusive=False)),
-    ),
-    Branch(
-        function=lambda th: np.cos(th),
-        derivative_function=lambda th: np.cos(th),
-        threshold=(Bound(-1, inclusive=True), Bound(1, inclusive=False)),
-    ),
-    Branch(
-        function=lambda th: np.tanh(th),
-        derivative_function=lambda th: 1 - np.tanh(th) ** 2,
-        threshold=(Bound(1, inclusive=True), None),
-    ),
-]
 
 branches = [
     Branch(
-        function=lambda th: np.cos(th),
-        derivative_function=lambda th: -np.sin(th),
+        function=lambda th: jnp.cos(th),
+        derivative_function=lambda th: -jnp.sin(th),
         threshold=(None, Bound(0, inclusive=False)),
     ),
     Branch(
-        function=lambda th: np.sin(th),
-        derivative_function=lambda th: np.cos(th),
+        function=lambda th: jnp.sin(th),
+        derivative_function=lambda th: jnp.cos(th),
         threshold=(Bound(0, inclusive=True), None),
     ),
 ]
 
-alpha = np.array([-1.0, 0.0, 1.0])
-alpha = np.array([-1.0, 1.0])
+alpha = jnp.array([-1.0, 1.0])
 
 
 # Define a custom softmax probability function
@@ -66,31 +48,43 @@ def softmax(logits):
     """Custom softmax that handles both 1D and 2D inputs."""
     if logits.ndim == 1:
         # Single theta case: logits shape (num_branches,)
-        exp_logits = np.exp(logits - np.max(logits))
-        return exp_logits / np.sum(exp_logits)
+        exp_logits = jnp.exp(logits - jnp.max(logits))
+        return exp_logits / jnp.sum(exp_logits)
     else:
         # Multiple theta case: logits shape (num_branches, num_theta)
-        exp_logits = np.exp(logits - np.max(logits, axis=0, keepdims=True))
-        return exp_logits / np.sum(exp_logits, axis=0, keepdims=True)
+        exp_logits = jnp.exp(logits - jnp.max(logits, axis=0, keepdims=True))
+        return exp_logits / jnp.sum(exp_logits, axis=0, keepdims=True)
 
 
 def sigmoid(logits):
-    exp_logits = np.exp(-logits)
+    exp_logits = jnp.exp(-logits)
     return 1 / (1 + exp_logits)
 
 
-# Define a custom Bernoulli sampling function
-def bernoulli_sampling(probabilities):
-    return np.random.choice(len(probabilities), p=probabilities)
+# Define a custom Bernoulli sampling function using JAX
+def bernoulli_sampling(probabilities, key=None):
+    """Sample from a discrete distribution using JAX random.
+
+    Args:
+        probabilities: Array of probabilities for each branch
+        key: JAX random key (if None, uses a default key)
+
+    Returns:
+        int: Index of the sampled branch
+    """
+    if key is None:
+        key = jax.random.PRNGKey(0)  # Default key for reproducibility
+
+    return jax.random.choice(key, len(probabilities), p=probabilities)
 
 
 # Update logits model to use softmax and Bernoulli sampling
 logits_model = LogitsModel(
-    logits_function=lambda th: alpha[:, np.newaxis]
+    logits_function=lambda th: alpha[:, jnp.newaxis]
     * th,  # Broadcasting: (2, 1) * (N,) -> (2, N)
-    logits_derivative_function=lambda th: alpha[:, np.newaxis]
-    * np.ones_like(th),  # (2, 1) * (N,) -> (2, N)
-    probability_function=softmax,  # Use softmax for probabilities
+    logits_derivative_function=lambda th: alpha[:, jnp.newaxis]
+    * jnp.ones_like(th),  # (2, 1) * (N,) -> (2, N)
+    probability_function=sigmoid,  # Use softmax for probabilities
 )
 
 prob = DiscreteProblem(
@@ -99,19 +93,19 @@ prob = DiscreteProblem(
     # sampling_function=bernoulli_sampling,  # Use Bernoulli sampling
 )
 
-thetas = np.linspace(-2.5, 2.5, 100)
+thetas = jnp.linspace(-2.5, 2.5, 100)
 sweep = Sweep(
     theta_values=thetas,
-    num_repetitions=1000,
+    num_repetitions=100,
     estimator_configs={
-        "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=1000)},
+        "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=10000)},
         "reinforce": {
-            "cfg": ReinforceConfig(num_samples=1000, use_baseline=True),
+            "cfg": ReinforceConfig(num_samples=10000, use_baseline=True),
             "state": ReinforceState(),
         },
         "gs": {
             "cfg": GumbelSoftmaxConfig(
-                temperature=0.5, num_samples=500, use_straight_through_estimator=True
+                temperature=0.01, num_samples=10000, use_straight_through_estimator=True
             )
         },
     },

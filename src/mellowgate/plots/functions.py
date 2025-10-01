@@ -9,8 +9,8 @@ The plotting functions integrate with matplotlib and are designed to work
 seamlessly with the core DiscreteProblem class.
 """
 
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
-import numpy as np
 
 from mellowgate.api.results import ResultsContainer
 from mellowgate.utils.outputs import OutputManager
@@ -41,7 +41,7 @@ def plot_combined_overlay(
 
         # Plot expectation values
         if results.expectation_values is not None:
-            expectation_values = np.squeeze(results.expectation_values)  # Ensure 1D
+            expectation_values = jnp.squeeze(results.expectation_values)  # Ensure 1D
             plt.plot(
                 results.theta_values,
                 expectation_values,
@@ -51,7 +51,7 @@ def plot_combined_overlay(
 
         # Plot discrete distributions
         if results.discrete_distributions is not None:
-            discrete_distributions = np.squeeze(
+            discrete_distributions = jnp.squeeze(
                 results.discrete_distributions
             )  # Ensure 1D
             plt.plot(
@@ -71,7 +71,7 @@ def plot_combined_overlay(
             # Handle vectorized sampled indices
             if len(sampled_branch_indices) > 0:
                 # Convert to array and handle different shapes
-                sampled_indices_array = np.asarray(sampled_branch_indices)
+                sampled_indices_array = jnp.asarray(sampled_branch_indices)
 
                 if sampled_indices_array.ndim == 2:
                     # Shape: (num_theta, num_samples) - take mean or first sample
@@ -82,9 +82,9 @@ def plot_combined_overlay(
                 else:
                     # Shape: (num_samples,) - original behavior
                     sampled_for_plot = sampled_indices_array
-                    thetas_for_plot = np.linspace(
-                        np.min(results.theta_values),
-                        np.max(results.theta_values),
+                    thetas_for_plot = jnp.linspace(
+                        jnp.min(results.theta_values),
+                        jnp.max(results.theta_values),
                         len(sampled_for_plot),
                     )
 
