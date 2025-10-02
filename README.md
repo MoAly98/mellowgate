@@ -227,44 +227,44 @@ make example
 
 1. **Expected Value**:
    The expected value of the function over discrete choices is:
-   $$
+   ```math
    \mathbb{E}[f(x; \theta)] = \sum_{i=1}^N \pi(x_i | \theta) f(x_i; \theta),
-   $$
+   ```
    where $N$ is the number of discrete choices.
 
 2. **Gradient of Expected Value**:
-   The gradient of the expected value with respect to $\theta" is:
-   $$
+   The gradient of the expected value with respect to $\theta$ is:
+   ```math
    \nabla_\theta \mathbb{E}[f(x; \theta)] = \sum_{i=1}^N \nabla_\theta \pi(x_i | \theta) f(x_i; \theta) + \pi(x_i | \theta) \nabla_\theta f(x_i; \theta).
-   $$
+   ```
 
 3. **Stochastic Sampling**:
    Samples are drawn from the probability distribution $\pi(x | \theta)$ using a user-defined sampling function $S$:
-   $$
+   ```math
    x \sim S(\pi(x | \theta)).
-   $$
+   ```
 
 4. **Gradient Estimation Methods**:
    - **Finite Differences**:
-     $$
+     ```math
      \nabla_\theta \mathbb{E}[f(x; \theta)] \approx \frac{\mathbb{E}[f(\theta + \epsilon)] - \mathbb{E}[f(\theta - \epsilon)]}{2\epsilon},
-     $$
-     where $\epsilon" is a small perturbation.
+     ```
+     where $\epsilon$ is a small perturbation.
    - **REINFORCE**:
-     $$
+     ```math
      \nabla_\theta \mathbb{E}[f(x; \theta)] \approx \mathbb{E}\left[f(x) \cdot \nabla_\theta \log \pi(x | \theta)\right].
-     $$
+     ```
    - **Gumbel-Softmax**:
      The Gumbel-Softmax method introduces a continuous relaxation of discrete sampling by adding Gumbel noise $g(x)$ to the logits $a(x)$ and applying the softmax function:
-     $$
+     ```math
      \pi(x | \theta) = \text{softmax}\left(\frac{a(x) + g(x)}{\tau}\right),
-     $$
-     where $\tau" is the temperature parameter controlling the sharpness of the distribution. As $\tau \to 0$, the distribution becomes one-hot, approximating discrete sampling.
+     ```
+     where $\tau$ is the temperature parameter controlling the sharpness of the distribution. As $\tau \to 0$, the distribution becomes one-hot, approximating discrete sampling.
 
      - **Straight-Through Estimator (STE)**: To enable backpropagation through the discrete sampling process, the STE method is used. During the forward pass, discrete samples are drawn, but during the backward pass, gradients are computed as if the softmax relaxation was used:
-       $$
+       ```math
        \nabla_\theta \mathbb{E}[f(x; \theta)] \approx \nabla_\theta f(x) + f(x) \cdot \nabla_\theta \pi(x | \theta).
-       $$
+       ```
 
 ### Notes on Choosing Logits
 
@@ -279,44 +279,44 @@ make example
 ### Example: Sigmoid-Bernoulli Problem
 
 Consider a discrete optimization problem with two branches:
-$$
+```math
 \begin{aligned}
     f(\theta) &= \begin{cases}
         \cos(\theta), & \text{if } k = 0, \\
         \sin(\theta), & \text{if } k = 1.
     \end{cases}
 \end{aligned}
-$$
+```
 
 The probability of selecting branch $k$ is computed using the sigmoid function:
-$$
+```math
 \pi(k | \theta) = \sigma(\alpha_k(\theta)) = \frac{1}{1 + e^{-\alpha_k(\theta)}}.
-$$
+```
 
 Where the logits $\alpha_k(\theta)$ are defined as:
-$$
+```math
 \alpha_k(\theta) = \begin{cases}
     -\theta, & \text{if } k = 0, \\
     \theta, & \text{if } k = 1.
 \end{cases}
-$$
+```
 
 Samples are drawn from the Bernoulli distribution:
-$$
+```math
 \begin{aligned}
     k \sim \text{Ber}(k; \pi(k | \theta)).
 \end{aligned}
-$$
+```
 
 The expected value of the function is:
-$$
+```math
 \mathbb{E}[f(\theta)] = \sum_{k \in \{0, 1\}} \pi(k | \theta) f_k(\theta).
-$$
+```
 
 The analytical expected value is:
-$$
+```math
 \mathbb{E}[f(\theta)] = \sigma(-\theta) \cdot \cos(\theta) + \sigma(\theta) \cdot \sin(\theta).
-$$
+```
 ---
 
 ### Example: Sigmoid-Bernoulli Problem with Three Branches
@@ -324,7 +324,7 @@ $$
 #### Mathematical Formulation
 
 Consider a discrete optimization problem with three branches:
-$$
+```math
 \begin{aligned}
     f(\theta) &= \begin{cases}
         \sin(\theta), & \text{if } k = 0, \\
@@ -332,33 +332,33 @@ $$
         \tanh(\theta), & \text{if } k = 2.
     \end{cases}
 \end{aligned}
-$$
+```
 
 The logits $\alpha_k(\theta)$ are defined as:
-$$
+```math
 \alpha_k(\theta) = \begin{cases}
     -\theta, & \text{if } k = 0, \\
     \theta, & \text{if } k = 1, \\
     2\theta, & \text{if } k = 2.
 \end{cases}
-$$
+```
 
 The probabilities $\pi(k | \theta)$ are computed using the softmax function to ensure they sum to 1:
-$$
+```math
 \pi(k | \theta) = \frac{\exp(\alpha_k(\theta))}{\sum_{j=0}^{2} \exp(\alpha_j(\theta))}.
-$$
+```
 
 Samples are drawn from the categorical distribution:
-$$
+```math
 \begin{aligned}
     k \sim \text{Cat}(k; \pi(k | \theta)).
 \end{aligned}
-$$
+```
 
 The expected value of the function is:
-$$
+```math
 \mathbb{E}[f(\theta)] = \sum_{k \in \{0, 1, 2\}} \pi(k | \theta) f_k(\theta).
-$$
+```
 ---
 
 ## mellowgate API Overview
@@ -496,25 +496,25 @@ Logits can be normalized using various methods depending on the requirements of 
 - **Softmax Function**:
   - Converts logits into probabilities that sum to 1.
   - Formula:
-    $$
+    ```math
     \pi(k | \theta) = \frac{\exp(\alpha_k)}{\sum_j \exp(\alpha_j)}.
-    $$
+    ```
   - Commonly used in multi-class classification problems.
 
 - **Sigmoid Function**:
   - Normalizes logits independently, producing probabilities for each branch without ensuring they sum to 1.
   - Formula:
-    $$
+    ```math
     \sigma(\alpha) = \frac{1}{1 + e^{-\alpha}}.
-    $$
+    ```
   - Useful for binary classification or independent probabilities.
 
 - **Temperature-Scaled Softmax**:
   - A variant of softmax where logits are divided by a temperature parameter $\tau$ before normalization.
   - Formula:
-    $$
+    ```math
     \pi(k | \theta) = \frac{\exp(\alpha_k / \tau)}{\sum_j \exp(\alpha_j / \tau)}.
-    $$
+    ```
   - Lower $\tau$ sharpens the distribution, while higher $\tau$ smoothens it.
 
 - **Sparsemax**:
