@@ -5,6 +5,8 @@ problems using various stochastic gradient estimators including finite differenc
 REINFORCE, and Gumbel-Softmax.
 """
 
+# Configure JAX for float64 precision (must be done before other imports)
+from . import config  # This enables x64 precision
 from .api.estimators import (
     FiniteDifferenceConfig,
     GumbelSoftmaxConfig,

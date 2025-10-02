@@ -35,9 +35,10 @@ class OutputManager:
         Args:
             base_directory: The root directory name for all outputs.
                            Defaults to "outputs". Will be created if it
-                           doesn't exist.
+                           doesn't exist. Relative paths will be resolved
+                           to absolute paths.
         """
-        self.base_directory = Path(base_directory)
+        self.base_directory = Path(base_directory).resolve()
         self.base_directory.mkdir(parents=True, exist_ok=True)
 
     def get_path(self, subdirectory: str, filename: Optional[str] = None) -> Path:

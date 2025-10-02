@@ -4925,7 +4925,7 @@ packages:
 - pypi: .
   name: mellowgate
   version: 0.1.0
-  sha256: 1f107f362a6e2dbfdaec1b2c340572cf34792ce7e859663cf670bfa7cdd4fd09
+  sha256: 6525c31af0ef1ee9d93ad83908e5529809a02e222dd75ec5c334d8e146009111
   requires_dist:
   - matplotlib>=3.10.6,<4
   requires_python: '>=3.11,<=3.13'

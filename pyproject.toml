@@ -79,6 +79,12 @@ force_grid_wrap = 0
 use_parentheses = true
 ensure_newline_before_comments = true
 
+[tool.coverage.report]
+omit = [
+    "src/mellowgate/plots/*",
+    "src/mellowgate/utils/old_style_plot.py"
+]
+
 # MyPy configuration (disabled by default)
 # Uncomment when ready for type checking
 # [tool.mypy]

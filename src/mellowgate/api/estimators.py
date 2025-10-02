@@ -348,10 +348,7 @@ def reinforce_gradient(
         pathwise_gradients = jnp.asarray(pathwise_gradients)
     else:
         # Create zeros with proper shape for vectorized computation
-        if function_values.ndim == 1:
-            pathwise_gradients = jnp.zeros_like(function_values)
-        else:
-            pathwise_gradients = jnp.zeros_like(function_values)
+        pathwise_gradients = jnp.zeros_like(function_values)
 
     # Check that we have the required gradient information for score function
     if discrete_problem.logits_model.logits_derivative_function is None:
@@ -372,19 +369,14 @@ def reinforce_gradient(
     # Handle baseline computation efficiently
     baseline_values = jnp.zeros(len(theta_array))
     if config.use_baseline:
-        # Vectorized baseline computation - single gather operation
-        if function_values.ndim == 1:
-            # Single theta case
-            sampled_rewards = function_values[sampled_choice_indices]
-        else:
-            # Multiple theta case - use efficient indexing
-            theta_indices = jnp.arange(len(theta_array))[:, jnp.newaxis]
-            theta_indices_expanded = jnp.broadcast_to(
-                theta_indices, sampled_choice_indices.shape
-            )
-            sampled_rewards = function_values[
-                sampled_choice_indices, theta_indices_expanded
-            ]
+        # Vectorized baseline computation - use efficient indexing
+        theta_indices = jnp.arange(len(theta_array))[:, jnp.newaxis]
+        theta_indices_expanded = jnp.broadcast_to(
+            theta_indices, sampled_choice_indices.shape
+        )
+        sampled_rewards = function_values[
+            sampled_choice_indices, theta_indices_expanded
+        ]
 
         current_mean_rewards = jnp.mean(sampled_rewards, axis=-1)  # Mean over samples
 

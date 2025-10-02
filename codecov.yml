@@ -1,0 +1,3 @@
+ignore:
+  - "src/mellowgate/plots"  # ignore folders and all its contents
+  - "src/mellowgate/utils/old_style_plot.py" # ignore specific file
