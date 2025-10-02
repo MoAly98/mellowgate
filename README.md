@@ -251,7 +251,6 @@ make example
    - **REINFORCE**:
 
      $$\nabla_\theta \mathbb{E}[f(x; \theta)] \approx \mathbb{E}\left[f(x) \cdot \nabla_\theta \log \pi(x | \theta)\right]$$
-     ```
    - **Gumbel-Softmax**:
      The Gumbel-Softmax method introduces a continuous relaxation of discrete sampling by adding Gumbel noise $g(x)$ to the logits $a(x)$ and applying the softmax function:
 
@@ -337,6 +336,7 @@ $$k \sim \text{Cat}(k; \pi(k | \theta))$$
 The expected value of the function is:
 
 $$\mathbb{E}[f(\theta)] = \sum_{k \in \{0, 1, 2\}} \pi(k | \theta) f_k(\theta)$$
+
 ---
 
 ## mellowgate API Overview
