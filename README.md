@@ -1,6 +1,6 @@
 # mellowgate
 
-A Python library for gradient estimation in discrete optimization problems. This package provides various gradient estimation methods including finite differences, REINFORCE, and Gumbel-Softmax for differentiable discrete decision making.
+A Python library for gradient estimation in discrete optimization problems. This package provides differentiable relaxations of discrete decisions using JAX, implementing three main gradient estimation methods: finite differences, REINFORCE, and Gumbel-Softmax for efficient discrete decision making.
 
 ## Installation
 
@@ -59,7 +59,7 @@ This project enforces code quality standards:
 - **Formatting**: [Black](https://black.readthedocs.io/) (88 character line length)
 - **Import Sorting**: [isort](https://pycqa.github.io/isort/) (black-compatible profile)
 - **Linting**: [flake8](https://flake8.pycqa.org/) with strict rules
-<!-- - **Type Checking**: [MyPy](https://mypy.readthedocs.io/) (disabled by default, ready to enable) -->
+- **Numerical Computing**: [JAX](https://jax.readthedocs.io/) for high-performance array operations with automatic differentiation
 
 ### Pre-commit Hooks
 
@@ -87,13 +87,10 @@ pixi run pre-commit run black
 
 #### Testing
 - Add unit tests for all new functionality using pytest
-- Ensure all tests pass before submitting changes: `make test` or `pytest tests/`
-- Maintain test coverage (currently 48.5%, focused on core functions with 92% coverage)
-- Use descriptive test names and docstrings explaining what each test validates
-- Organize tests into logical test classes (TestBound, TestBranch, etc.)
+- Ensure all tests pass before submitting changes: `make test`
+- Use descriptive test names and clear test organization
 - Test both success cases and error conditions
-- Use fixtures for common test setup (e.g., theta values, problem instances)
-- Run `make test-cov` for detailed HTML coverage reports
+- Use fixtures for common test setup
 
 #### Documentation
 - Update docstrings when changing function signatures
@@ -105,22 +102,17 @@ pixi run pre-commit run black
 The CI pipeline runs on every push and pull request:
 
 - **Linting**: Checks code formatting, import sorting, and flake8 compliance
-- **Testing**: Comprehensive unit tests with pytest and coverage reporting
-- **Type Checking**: MyPy type checking (when enabled)
+- **Testing**: Unit tests with pytest
 - **Build Validation**: Ensures package can be built and installed
-
-#### CI Status Badges
-The CI automatically runs tests across Python 3.11 and 3.12, ensuring compatibility. Test coverage is reported and uploaded to Codecov for tracking over time.
 
 ### Test Coverage
 
-Current test coverage focuses on the core `functions.py` module (92% coverage) with comprehensive tests for:
-- **Bound**: Parameter boundary definitions
-- **Branch**: Function branches with derivatives and thresholds
-- **LogitsModel**: Probability distribution modeling
-- **DiscreteProblem**: Complete problem formulation with vectorized operations
+The test suite covers core functionality including:
+- Mathematical operations and numerical stability
+- API components and workflows
+- Edge cases and error handling
 
-Run `make test-cov` to generate detailed HTML coverage reports in `htmlcov/`.
+Run `make test-cov` to generate coverage reports.
 
 ### Troubleshooting
 
@@ -153,13 +145,14 @@ mellowgate/
 ├── src/mellowgate/           # Main package source code
 │   ├── api/                  # Core API modules
 │   │   ├── estimators.py     # Gradient estimation algorithms
-│   │   ├── experiments.py    # Experiment running utilities
-│   │   └── functions.py      # Problem definition classes
+│   │   ├── experiments.py    # Experiment orchestration utilities
+│   │   ├── functions.py      # Problem definition classes
+│   │   └── results.py        # Results data structures
 │   ├── plots/                # Visualization utilities
-│   ├── utils/                # Utility functions
-│   └── logging/              # Logging configuration
-├── tests/                    # Unit tests (pytest)
-│   └── test_functions.py     # Tests for core functions
+│   ├── utils/                # Mathematical utility functions
+│   ├── logging/              # Logging configuration
+│   └── config.py             # JAX configuration and precision settings
+├── tests/                    # Comprehensive unit tests (pytest)
 ├── learning/                 # Tutorial and example notebooks
 ├── example.py                # Main example script
 ├── pyproject.toml           # Project metadata and tool config
@@ -185,9 +178,8 @@ mellowgate/
 3. **Test locally**:
    ```bash
    make lint          # Check code quality
-   make test          # Run unit tests
+   make test          # Run tests
    make example       # Test functionality
-   make pre-commit    # Run all hooks
    ```
 
 4. **Submit pull request**:
@@ -198,13 +190,13 @@ mellowgate/
 
 ## Running Tests
 
-The project includes comprehensive unit tests for core functionality:
+Run tests using the provided commands:
 
 ```bash
 # Run all tests
 make test
 
-# Run tests with coverage report (HTML + terminal)
+# Run tests with coverage report
 make test-cov
 
 # Run tests directly with pytest
@@ -212,16 +204,7 @@ pytest tests/ -v
 
 # Run specific test file
 pytest tests/test_functions.py -v
-
-# Run tests with coverage (pytest directly)
-pytest tests/ --cov=mellowgate --cov-report=html
 ```
-
-The test suite covers:
-- ✅ **33 tests** with 100% pass rate
-- ✅ **Core functions** (92% coverage) - comprehensive vectorized operation testing
-- ✅ **Edge cases** - boundary conditions, error handling, large values
-- ✅ **Integration** - complete workflow validation
 
 ## Example Usage
 
@@ -392,40 +375,44 @@ The `mellowgate` library provides a Python API for gradient estimation in discre
      - A sampling function to draw samples from the probability distribution (e.g., Bernoulli).
 
    ```python
+   import jax.numpy as jnp
    from mellowgate.api.functions import DiscreteProblem, Branch, LogitsModel
 
-   # Define branches
+   # Define branches with JAX-compatible functions
    branches = [
        Branch(
-           function=lambda th: float(np.cos(th)),
-           derivative_function=lambda th: float(-np.sin(th)),
+           function=lambda th: jnp.cos(th),
+           derivative_function=lambda th: -jnp.sin(th),
        ),
        Branch(
-           function=lambda th: float(np.sin(th)),
-           derivative_function=lambda th: float(np.cos(th)),
+           function=lambda th: jnp.sin(th),
+           derivative_function=lambda th: jnp.cos(th),
        )
    ]
 
    # Define a custom sigmoid probability function
    def sigmoid(logits):
-       return 1 / (1 + np.exp(-logits))
+       return 1 / (1 + jnp.exp(-logits))
 
-   # Define a custom Bernoulli sampling function
-   def bernoulli_sampling(probabilities):
-       return np.random.choice(len(probabilities), p=probabilities)
+   # Define a custom categorical sampling function using JAX
+   def categorical_sampling(probabilities, key=None):
+       import jax.random
+       if key is None:
+           key = jax.random.PRNGKey(0)
+       return jax.random.categorical(key, jnp.log(probabilities))
 
    # Create a logits model with sigmoid probabilities
    logits_model = LogitsModel(
-       logits_function=lambda th: alpha * th,
-       logits_derivative_function=lambda th: alpha,
-       probability_function=sigmoid,  # Use sigmoid for probabilities
+       logits_function=lambda th: jnp.array([-th, th]),
+       logits_derivative_function=lambda th: jnp.array([-1.0, 1.0]),
+       probability_function=sigmoid,
    )
 
-   # Define the discrete problem with Bernoulli sampling
+   # Define the discrete problem with JAX-compatible sampling
    problem = DiscreteProblem(
        branches=branches,
        logits_model=logits_model,
-       sampling_function=bernoulli_sampling,  # Use Bernoulli sampling
+       sampling_function=categorical_sampling,
    )
    ```
 
@@ -447,10 +434,11 @@ The `mellowgate` library provides a Python API for gradient estimation in discre
    - Use the `run_parameter_sweep` function to evaluate gradient estimators over a range of parameter values.
 
    ```python
+   import jax.numpy as jnp
    from mellowgate.api.experiments import Sweep, run_parameter_sweep
 
    sweep = Sweep(
-       theta_values=np.linspace(-2.5, 2.5, 21),
+       theta_values=jnp.linspace(-2.5, 2.5, 21),
        num_repetitions=1000,
        estimator_configs={
            "fd": {"cfg": fd_config},

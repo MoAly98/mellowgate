@@ -66,8 +66,8 @@ test:
 
 test-cov:
 	@echo "Running tests with coverage..."
-	pixi run pytest tests/ -v --cov=mellowgate --cov-report=term-missing --cov-report=html
-	@echo "✅ Tests with coverage completed! Check htmlcov/ for detailed report."
+	pixi run pytest tests/ -v --cov=mellowgate --cov-report=term-missing --cov-report=xml
+	@echo "✅ Tests with coverage completed! Check coverage.xml for detailed report."
 
 # Example
 example:

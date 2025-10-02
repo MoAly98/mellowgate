@@ -59,12 +59,12 @@ def softmax(logits: ArrayLike, axis: int = -1) -> jnp.ndarray:
 
     # Handle empty arrays
     if logits_array.size == 0:
-        return logits_array.astype(float)
+        return logits_array.astype(jnp.float64)
 
     # Handle scalar case (0-dimensional array)
     if logits_array.ndim == 0:
         # For a scalar, softmax should return 1.0 (probability of single event)
-        return jnp.array(1.0)
+        return jnp.array(1.0, dtype=jnp.float64)
 
     # For all other cases, use JAX's softmax
     return jax.nn.softmax(logits_array, axis=axis)
