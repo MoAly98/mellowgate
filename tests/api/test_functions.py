@@ -482,7 +482,6 @@ class TestEdgeCases:
         expected_probs = problem.compute_probabilities(theta)
         observed_freq_0 = jnp.mean(samples == 0)
         observed_freq_1 = jnp.mean(samples == 1)
-        print(observed_freq_0, observed_freq_1, expected_probs)
 
         # With 10k samples, should be within ~1% of expected (99% confidence)
         assert jnp.abs(observed_freq_0 - expected_probs[0]) < 0.01
