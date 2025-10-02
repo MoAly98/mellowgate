@@ -526,16 +526,25 @@ class DiscreteProblem:
         # Compute required quantities
         probabilities = self.compute_probabilities(theta_array)
         function_values = self.compute_function_values(theta_array)
-        logits_gradients = self.logits_model.logits_derivative_function(theta_array)
 
-        # Compute probability gradients using chain rule through softmax
-        # For 2D arrays, compute mean along branch dimension (axis=0) for each theta
-        mean_logits_gradient = jnp.sum(
-            probabilities * logits_gradients, axis=0, keepdims=True
-        )
-        probability_gradients = probabilities * (
-            logits_gradients - mean_logits_gradient
-        )
+        # Compute probability gradients using automatic differentiation
+        # This is more general and handles any probability function correctly
+        def compute_probabilities_for_theta(theta_single):
+            """Wrapper to compute probabilities for a single theta value."""
+            logits = self.logits_model.logits_function(theta_single)
+            return self.logits_model.probability_function(logits)
+
+        # Use JAX jacfwd to compute the Jacobian (gradient of vector-valued function)
+        prob_jacobian_fn = jax.jacfwd(compute_probabilities_for_theta)
+
+        if theta_array.shape[0] == 1:
+            # Single theta case
+            probability_gradients = prob_jacobian_fn(theta_array[0])
+            probability_gradients = probability_gradients.reshape(-1, 1)
+        else:
+            # Multiple theta case - vectorize the Jacobian computation
+            prob_jacobian_vectorized = jax.vmap(prob_jacobian_fn)
+            probability_gradients = prob_jacobian_vectorized(theta_array).T
 
         # Apply policy gradient theorem
         # For 2D arrays, sum along branch dimension (axis=0)

@@ -13,6 +13,7 @@ The estimators handle the fundamental challenge of computing gradients through
 discrete sampling operations.
 """
 
+import warnings
 from dataclasses import dataclass
 from typing import Union
 
@@ -131,6 +132,29 @@ def finite_difference_gradient(
         2 * config.step_size
     )
 
+    # Check for NaN or Inf values and handle them robustly
+    nan_mask = jnp.isnan(gradient_estimate)
+    inf_mask = jnp.isinf(gradient_estimate)
+    invalid_mask = nan_mask | inf_mask
+
+    if jnp.any(invalid_mask):
+        invalid_count = jnp.sum(invalid_mask)
+        total_count = len(gradient_estimate)
+
+        warnings.warn(
+            f"FD gradient estimation produced {invalid_count} invalid values "
+            f"(NaN or Inf) out of {total_count} parameter points. This can occur with "
+            f"very small step_size (current: {config.step_size}) causing numerical "
+            f"precision issues, or with extreme function values. Consider adjusting "
+            f"step_size or num_samples (current: {config.num_samples}). "
+            f"Invalid values will be replaced with 0.0.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+        # Replace invalid values with 0.0 as a safe fallback
+        gradient_estimate = jnp.where(invalid_mask, 0.0, gradient_estimate)
+
     # Return scalar if input was scalar, array otherwise
     if is_scalar_input:
         return float(gradient_estimate[0])
@@ -239,7 +263,7 @@ def _reinforce_gradient_vectorized(
         baseline_values = baseline_values[jnp.newaxis]
         num_theta = 1
 
-    # Compute score function center term vectorized: E[∇θ log π(x|θ)] = Σ π(x) * ∇θ a(x)
+    # Compute score function center term: E[∇θ log π(x|θ)] = Σ π(x) * ∇θ log π(x|θ)
     score_function_center = jnp.sum(
         choice_probabilities * logits_gradients, axis=0
     )  # Shape: (num_theta,)
@@ -360,6 +384,14 @@ def reinforce_gradient(
         discrete_problem.logits_model.logits_derivative_function(theta_array)
     )
 
+    # Convert logits gradients to actual score function gradients
+    # For custom probability functions, we need ∇θ log π(x|θ), not ∇θ α(x|θ)
+    # For the binary sigmoid case with complementary probabilities:
+    # π0 = sigmoid(α0), π1 = sigmoid(α1) where α1 = -α0
+    # ∇θ log π0 = (∇θ α0) * (1 - π0) = (∇θ α0) * π1
+    # ∇θ log π1 = (∇θ α1) * (1 - π1) = (∇θ α1) * π0
+    score_function_gradients = logits_gradients * (1 - choice_probabilities)
+
     # Generate all random samples at once using batched key generation
     key = jax.random.PRNGKey(0)  # Use deterministic key for reproducibility
     sampled_choice_indices = discrete_problem.sample_branch(
@@ -395,12 +427,37 @@ def reinforce_gradient(
         choice_probabilities,
         function_values,
         pathwise_gradients,
-        logits_gradients,
+        score_function_gradients,
         sampled_choice_indices,
         baseline_values,
         config.num_samples,
         config.use_baseline,
     )
+
+    # Check for NaN or Inf values and handle them robustly
+    nan_mask = jnp.isnan(gradient_estimates)
+    inf_mask = jnp.isinf(gradient_estimates)
+    invalid_mask = nan_mask | inf_mask
+
+    if jnp.any(invalid_mask):
+        invalid_count = jnp.sum(invalid_mask)
+        total_count = len(gradient_estimates)
+
+        import warnings
+
+        warnings.warn(
+            f"REINFORCE gradient estimation produced {invalid_count} invalid values "
+            f"(NaN or Inf) out of {total_count} parameter points. This can occur with "
+            f"extreme probability values or poorly conditioned sampling. "
+            f"Consider adjusting num_samples (current: {config.num_samples}) or "
+            f"using baseline (current: {config.use_baseline}). "
+            f"Invalid values will be replaced with 0.0.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+        # Replace invalid values with 0.0 as a safe fallback
+        gradient_estimates = jnp.where(invalid_mask, 0.0, gradient_estimates)
 
     # Return scalar if input was scalar, array otherwise
     if is_scalar_input:
@@ -575,6 +632,7 @@ def gumbel_softmax_gradient(
     Raises:
         ValueError: If the logits model does not provide gradient information
             (dlogits_dtheta) required for reparameterization.
+        Warning: If NaN values are detected and need to be handled.
     """
     # Convert to array for consistent handling
     theta_array = jnp.asarray(parameter_value)
@@ -593,6 +651,15 @@ def gumbel_softmax_gradient(
     logits_gradients = jnp.asarray(
         discrete_problem.logits_model.logits_derivative_function(theta_array)
     )
+
+    # Convert logits gradients to actual score function gradients for Gumbel-Softmax
+    # For the binary sigmoid case with complementary probabilities:
+    # ∇θ log π_i = (∇θ α_i) * (1 - π_i)
+    choice_probabilities = jnp.asarray(
+        discrete_problem.compute_probabilities(theta_array)
+    )
+    score_function_gradients = logits_gradients * (1 - choice_probabilities)
+
     logits = jnp.asarray(discrete_problem.logits_model.logits_function(theta_array))
     function_values = jnp.asarray(discrete_problem.compute_function_values(theta_array))
 
@@ -620,7 +687,7 @@ def gumbel_softmax_gradient(
     # Use optimized vectorized gradient computation
     gradient_estimates = _gumbel_softmax_gradient_vectorized(
         logits,
-        logits_gradients,
+        score_function_gradients,
         function_values,
         pathwise_gradients,
         gumbel_noise,
@@ -629,6 +696,29 @@ def gumbel_softmax_gradient(
         config.temperature,
         config.use_straight_through_estimator,
     )
+
+    # Check for NaN values and handle them robustly
+    nan_mask = jnp.isnan(gradient_estimates)
+    if jnp.any(nan_mask):
+        nan_count = jnp.sum(nan_mask)
+        total_count = len(gradient_estimates)
+
+        import warnings
+
+        warnings.warn(
+            f"Gumbel-Softmax gradient estimation produced {nan_count} NaN values "
+            f"out of {total_count} parameter points. This typically occurs with "
+            f"extreme logit values and high sample counts. Consider reducing "
+            f"num_samples (current: {config.num_samples}) or adjusting temperature "
+            f"(current: {config.temperature}). NaN values will be replaced with 0.0.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+        # Replace NaN values with 0.0 as a safe fallback
+        # This is reasonable since NaNs typically occur at extreme parameter values
+        # where the true gradient should be very close to zero
+        gradient_estimates = jnp.where(nan_mask, 0.0, gradient_estimates)
 
     # Return scalar if input was scalar, array otherwise
     if is_scalar_input:
