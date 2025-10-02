@@ -1,2 +1,6 @@
 ignore:
   - "src/mellowgate/plots"  # ignore folders and all its contents
+comment:
+  layout: "condensed_header, condensed_files, condensed_footer"
+  hide_project_coverage: TRUE # only patch diff coverage
+  require_ci_to_pass: TRUE
