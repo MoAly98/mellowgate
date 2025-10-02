@@ -88,12 +88,9 @@ pixi run pre-commit run black
 #### Testing
 - Add unit tests for all new functionality using pytest
 - Ensure all tests pass before submitting changes: `make test`
-- Maintain comprehensive test coverage across core modules
-- Use descriptive test names and docstrings explaining what each test validates
-- Organize tests into logical test classes
+- Use descriptive test names and clear test organization
 - Test both success cases and error conditions
 - Use fixtures for common test setup
-- Generate detailed coverage reports with `make test-cov`
 
 #### Documentation
 - Update docstrings when changing function signatures
@@ -105,20 +102,17 @@ pixi run pre-commit run black
 The CI pipeline runs on every push and pull request:
 
 - **Linting**: Checks code formatting, import sorting, and flake8 compliance
-- **Testing**: Comprehensive unit tests with pytest and coverage reporting
+- **Testing**: Unit tests with pytest
 - **Build Validation**: Ensures package can be built and installed
-
-The CI automatically runs tests across multiple Python versions, ensuring compatibility. Test coverage is reported and tracked over time.
 
 ### Test Coverage
 
-The test suite provides comprehensive coverage of core functionality, with particular focus on:
-- **Mathematical Operations**: Vectorized operations and numerical stability
-- **API Components**: Problem formulation, gradient estimators, and experimental workflows
-- **Edge Cases**: Boundary conditions, error handling, and extreme values
-- **Integration**: Complete end-to-end functionality validation
+The test suite covers core functionality including:
+- Mathematical operations and numerical stability
+- API components and workflows
+- Edge cases and error handling
 
-Run `make test-cov` to generate detailed HTML coverage reports.
+Run `make test-cov` to generate coverage reports.
 
 ### Troubleshooting
 
@@ -184,9 +178,8 @@ mellowgate/
 3. **Test locally**:
    ```bash
    make lint          # Check code quality
-   make test          # Run unit tests
+   make test          # Run tests
    make example       # Test functionality
-   make pre-commit    # Run all hooks
    ```
 
 4. **Submit pull request**:
@@ -197,13 +190,13 @@ mellowgate/
 
 ## Running Tests
 
-The project includes comprehensive unit tests for core functionality:
+Run tests using the provided commands:
 
 ```bash
 # Run all tests
 make test
 
-# Run tests with coverage report (HTML + terminal)
+# Run tests with coverage report
 make test-cov
 
 # Run tests directly with pytest
@@ -211,12 +204,7 @@ pytest tests/ -v
 
 # Run specific test file
 pytest tests/test_functions.py -v
-
-# Run tests with coverage (pytest directly)
-pytest tests/ --cov=mellowgate --cov-report=html
 ```
-
-The test suite provides comprehensive validation of core mathematical operations, API components, edge cases, and integration scenarios.
 
 ## Example Usage
 
