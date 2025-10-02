@@ -14,36 +14,14 @@ All operations support NumPy array broadcasting and are optimized for performanc
 with large parameter spaces.
 """
 
-import inspect
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Protocol, Union, runtime_checkable
+from typing import Callable, List, Optional, Union
 
 import jax
 import jax.numpy as jnp
+from sigmatch import SignatureMatcher, SignatureMismatchError
 
 from mellowgate.utils.functions import softmax
-
-
-@runtime_checkable
-class SamplingFunction(Protocol):
-    """Protocol defining the expected signature for custom sampling functions.
-
-    Custom sampling functions must accept probabilities and a random key,
-    returning a single sample index as a JAX array.
-    """
-
-    def __call__(self, probabilities: jnp.ndarray, key: jax.Array) -> jnp.ndarray:
-        """Sample a single branch index from the probability distribution.
-
-        Args:
-            probabilities: Probability distribution over branches.
-                Shape: (num_branches,)
-            key: JAX random key for sampling.
-
-        Returns:
-            jnp.ndarray: Single sample index as a scalar JAX array.
-        """
-        ...
 
 
 def _default_probability_function(logits: jnp.ndarray) -> jnp.ndarray:
@@ -153,10 +131,10 @@ class DiscreteProblem:
     Attributes:
         branches: List of Branch objects representing the discrete choices.
         logits_model: LogitsModel defining the probability distribution.
-        sampling_function: Optional callable for custom sampling. Must implement
-                          SamplingFunction protocol with signature:
-                          (probabilities: jnp.ndarray, key: jax.Array) -> jnp.ndarray
-                          Will be integrated into the vectorized sampling pipeline.
+        sampling_function:  Optional callable for custom sampling. Must implement with
+                            signature:
+                            (probabilities: jnp.ndarray, key: jax.Array) -> jnp.ndarray
+                            Will be integrated into the vectorized sampling pipeline.
 
     Properties:
         num_branches: Number of branches in the problem.
@@ -186,7 +164,7 @@ class DiscreteProblem:
 
     branches: List[Branch]
     logits_model: LogitsModel
-    sampling_function: Optional[SamplingFunction] = None
+    sampling_function: Optional[Callable[[jnp.ndarray, jax.Array], int]] = None
 
     def __post_init__(self):
         """Validate the sampling function signature after initialization."""
@@ -197,32 +175,19 @@ class DiscreteProblem:
         """Validate that the sampling function has the correct signature.
 
         Raises:
-            TypeError: If the function signature doesn't match the expected protocol.
+            SignatureMismatchError: If the function signature doesn't match the
+                                    expected signature.
             ValueError: If the function doesn't behave correctly with test inputs.
         """
         if self.sampling_function is None:
             return
 
-        if not isinstance(self.sampling_function, SamplingFunction):
-            # Try to get more detailed signature information
-            try:
-                sig = inspect.signature(self.sampling_function)
-                params = list(sig.parameters.keys())
-
-                raise TypeError(
-                    "Sampling function must implement SamplingFunction protocol.\n"
-                    "Expected signature: (probabilities: jnp.ndarray, "
-                    "key: jax.Array) -> jnp.ndarray\n"
-                    f"Got function with parameters: {params}\n"
-                    "Make sure your function accepts exactly 2 parameters: "
-                    "probabilities and key."
-                )
-            except Exception:
-                raise TypeError(
-                    "Sampling function must implement SamplingFunction protocol.\n"
-                    "Expected signature: (probabilities: jnp.ndarray, "
-                    "key: jax.Array) -> jnp.ndarray"
-                )
+        try:
+            SignatureMatcher(".", ".").match(
+                self.sampling_function, raise_exception=True
+            )
+        except SignatureMismatchError as e:
+            raise e
 
         # Test the function with sample inputs to ensure it works correctly
         try:

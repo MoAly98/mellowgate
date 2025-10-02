@@ -1,8 +1,6 @@
 [project]
-authors = [{name = "maly", email = "mohamedaymanali@gmail.com"}]
-dependencies = [
-    "matplotlib>=3.10.6,<4",
-]
+authors = [{name = "maly", email = "mohamed.aly@cern.ch"}]
+
 name = "mellowgate"
 requires-python = ">= 3.11,<=3.13"
 version = "0.1.0"
@@ -17,6 +15,7 @@ platforms = ["osx-arm64", "linux-64", "osx-64"]
 
 [tool.pixi.pypi-dependencies]
 mellowgate = { path = ".", editable = true }
+sigmatch = "*"
 
 [tool.pixi.tasks]
 
@@ -44,7 +43,7 @@ addopts = [
     "--strict-config",
     "--cov=mellowgate",
     "--cov-report=term-missing",
-    "--cov-fail-under=1"
+    "--cov-fail-under=80"
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
