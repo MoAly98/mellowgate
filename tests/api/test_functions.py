@@ -346,6 +346,123 @@ class TestDiscreteProblem:
         assert stochastic_vals.shape == (1, 5)  # (num_theta, num_samples)
         assert jnp.all(jnp.isfinite(stochastic_vals))
 
+    def test_sampling_function_validation_errors(self):
+        """Test sampling function validation error paths."""
+        import jax.numpy as jnp
+        from sigmatch import SignatureMismatchError
+
+        branches = [Branch(lambda x: x), Branch(lambda x: x**2)]
+        logits_model = LogitsModel(logits_function=lambda th: jnp.array([th, -th]))
+
+        # Test early return when sampling_function is None
+        problem_no_sampling = DiscreteProblem(
+            branches, logits_model, sampling_function=None
+        )
+        assert problem_no_sampling.sampling_function is None
+        # Verify that validation was properly skipped by testing functionality
+        theta_test = jnp.array([0.5])
+        probs = problem_no_sampling.compute_probabilities(theta_test)
+        assert jnp.allclose(
+            jnp.sum(probs, axis=0), 1.0
+        ), "Probabilities should sum to 1 even without sampling function"
+
+        # Test SignatureMismatchError handling
+        def bad_signature_function(wrong_args):
+            return jnp.array(0)
+
+        with pytest.raises(SignatureMismatchError):
+            DiscreteProblem(
+                branches, logits_model, sampling_function=bad_signature_function
+            )  # type: ignore
+
+        # Test invalid return type
+        def bad_return_type(probs, key):
+            return 0  # Python int instead of jnp.ndarray
+
+        with pytest.raises(
+            ValueError, match="Sampling function must return a jnp.ndarray"
+        ):
+            DiscreteProblem(
+                branches, logits_model, sampling_function=bad_return_type
+            )  # type: ignore
+
+        # Test invalid return shape
+        def bad_return_shape(probs, key):
+            return jnp.array([0, 1])  # Array instead of scalar
+
+        with pytest.raises(ValueError, match="Sampling function must return a scalar"):
+            DiscreteProblem(
+                branches, logits_model, sampling_function=bad_return_shape
+            )  # type: ignore
+
+        # Test invalid return value
+        def bad_return_value(probs, key):
+            return jnp.array(10)  # Index out of range
+
+        with pytest.raises(
+            ValueError, match="Sampling function returned invalid index"
+        ):
+            DiscreteProblem(
+                branches, logits_model, sampling_function=bad_return_value
+            )  # type: ignore
+
+        # Test generic exception handling
+        def failing_function(probs, key):
+            raise RuntimeError("Custom error")
+
+        with pytest.raises(
+            ValueError, match="Sampling function failed validation test"
+        ):
+            DiscreteProblem(branches, logits_model, sampling_function=failing_function)
+
+    def test_empty_theta_array(self):
+        """Test handling of empty theta array."""
+        branches = [Branch(lambda x: x), Branch(lambda x: x**2)]
+        logits_model = LogitsModel(logits_function=lambda th: jnp.array([th, -th]))
+        problem = DiscreteProblem(branches, logits_model)
+
+        # Empty theta array should return empty result
+        empty_theta = jnp.array([])
+        result = problem.sample_branch(empty_theta, num_samples=5)
+        assert result.shape == (0, 5)
+
+    def test_single_theta_with_2d_function_values(self):
+        """Test single theta case with 2D function values."""
+
+        # Create branches that return 2D function values
+        def branch1(x):
+            return jnp.ones_like(x)
+
+        def branch2(x):
+            return jnp.zeros_like(x)
+
+        branches = [Branch(branch1), Branch(branch2)]
+        logits_model = LogitsModel(logits_function=lambda th: jnp.array([th, -th]))
+        problem = DiscreteProblem(branches, logits_model)
+
+        # Use scalar theta
+        theta_scalar = jnp.array(0.5)  # Convert to array
+        result = problem.sample_branch(theta_scalar, num_samples=3)
+        assert result.shape == (3,)  # Should handle single theta case properly
+
+        # Test compute_stochastic_values with single theta case
+        key = jax.random.PRNGKey(42)
+        stoch_values = problem.compute_stochastic_values(
+            theta_scalar, num_samples=3, key=key
+        )
+        assert stoch_values.shape == (
+            1,
+            3,
+        )  # Should be (1, num_samples) for single theta
+
+        # Verify the values come from the correct branch functions
+        # branch1: f(0.5) = 1.0, branch2: f(0.5) = 0.0
+        # All values should be either 1.0 or 0.0
+        unique_values = jnp.unique(stoch_values)
+        assert jnp.all(
+            jnp.isin(unique_values, jnp.array([0.0, 1.0]))
+        ), "Stochastic values should only be 0.0 or 1.0 for these branches"
+
 
 class TestEdgeCases:
     """Test edge cases and error conditions."""
@@ -449,14 +566,14 @@ class TestEdgeCases:
         """Test custom sampling function path."""
 
         def custom_sampler(probs, key):
-            return jnp.asarray(0)  # Always pick first branch
+            return jnp.array(0)  # Always pick first branch
 
         branches = [Branch(function=lambda th: th), Branch(function=lambda th: 2 * th)]
         logits_model = LogitsModel(logits_function=lambda th: jnp.array([0.0, 1.0]))
         problem = DiscreteProblem(
             branches=branches,
             logits_model=logits_model,
-            sampling_function=custom_sampler,
+            sampling_function=custom_sampler,  # type: ignore
         )
 
         theta = jnp.array([1.0])

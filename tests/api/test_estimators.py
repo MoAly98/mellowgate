@@ -208,6 +208,44 @@ class TestReinforceGradient:
         assert gradient is not None
         assert jnp.isfinite(gradient).all()
 
+        # Test uninitialized baseline case - use fresh state with baseline enabled
+        config_baseline = ReinforceConfig(num_samples=50, use_baseline=True)
+        fresh_state = ReinforceState()  # Fresh uninitialized state
+
+        # For predictable baseline testing, use simple problem at theta=1.0
+        test_theta_single = jnp.array([1.0])
+        reinforce_gradient(
+            simple_problem, test_theta_single, config_baseline, fresh_state
+        )
+
+        assert fresh_state.initialized  # Should now be initialized
+        assert jnp.isfinite(fresh_state.baseline)
+
+        # The baseline should be set to the mean of sampled rewards
+        # For simple_problem at theta=1.0: branch1(1.0)=1.0, branch2(1.0)=1.0
+        # So baseline should be close to 1.0 (the expected value)
+        assert (
+            jnp.abs(fresh_state.baseline - 1.0) < 0.5
+        )  # Allow some variance due to sampling
+
+        # Test scalar theta case to exercise scalar input handling
+        scalar_theta = test_theta[0]  # Extract scalar
+        scalar_gradient = reinforce_gradient(
+            simple_problem, scalar_theta, config, state
+        )
+
+        # Verify scalar and array versions give equivalent results
+        array_gradient = reinforce_gradient(
+            simple_problem, test_theta[:1], config, state
+        )
+        assert jnp.isfinite(scalar_gradient)
+        assert jnp.isfinite(array_gradient).all()
+        # They should be approximately equal (allowing for sampling variance)
+        # Both should be scalars, so direct comparison
+        assert (
+            jnp.abs(scalar_gradient - array_gradient) < 0.1
+        ), "Scalar and array gradients should be approximately equal"
+
     def test_reinforce_reproducibility(self, simple_problem, test_theta):
         """Test REINFORCE reproducibility."""
         config = ReinforceConfig(num_samples=100)
@@ -648,6 +686,43 @@ class TestEdgeCases:
         # Should handle extreme values without error
         assert jnp.isfinite(fd_gradient).all()
 
+        # Try to trigger NaN warnings with very extreme conditions
+        super_extreme_theta = jnp.array([1e6])  # Very large value
+
+        # For REINFORCE with extreme conditions to trigger NaN warning
+        reinforce_extreme_config = ReinforceConfig(num_samples=10, use_baseline=False)
+        reinforce_state = ReinforceState()
+        with pytest.warns(
+            RuntimeWarning, match="REINFORCE gradient estimation produced"
+        ):
+            reinforce_extreme_gradient = reinforce_gradient(
+                simple_problem,
+                super_extreme_theta,
+                reinforce_extreme_config,
+                reinforce_state,
+            )
+            # After NaN replacement, gradient should be finite (replaced with 0.0)
+            assert jnp.all(jnp.isfinite(reinforce_extreme_gradient))
+            # Should be 0.0 due to NaN replacement
+            assert jnp.allclose(
+                reinforce_extreme_gradient, 0.0
+            ), "NaN values should be replaced with 0.0"
+
+        # For Gumbel-Softmax with extreme conditions
+        gs_extreme_config = GumbelSoftmaxConfig(temperature=1e-6, num_samples=5000)
+        with pytest.warns(
+            RuntimeWarning, match="Gumbel-Softmax gradient estimation produced"
+        ):
+            gs_extreme_gradient = gumbel_softmax_gradient(
+                simple_problem, super_extreme_theta, gs_extreme_config
+            )
+            # After NaN replacement, gradient should be finite (replaced with 0.0)
+            assert jnp.all(jnp.isfinite(gs_extreme_gradient))
+            # Should be 0.0 due to NaN replacement
+            assert jnp.allclose(
+                gs_extreme_gradient, 0.0
+            ), "NaN values should be replaced with 0.0"
+
     def test_scalar_input_handling(self, simple_problem):
         """Test handling of scalar vs array inputs across estimators."""
         # Test scalar input (not array)
@@ -673,6 +748,20 @@ class TestEdgeCases:
         gs_result = gumbel_softmax_gradient(simple_problem, scalar_theta, gs_config)
         assert isinstance(gs_result, float)  # Should return scalar for scalar input
 
+    def test_empty_array_inputs(self, simple_problem):
+        """Test handling of empty arrays."""
+        import jax.random as random
+
+        theta = jnp.array([])
+        key = random.PRNGKey(42)
+
+        # Test compute_stochastic_values with empty theta array
+        stoch_vals = simple_problem.compute_stochastic_values(
+            theta, num_samples=10, key=key
+        )
+        assert isinstance(stoch_vals, jnp.ndarray)
+        assert stoch_vals.shape == (0, 10)
+
     def test_estimator_missing_requirements(self):
         """Test estimators when required derivatives are missing."""
         # Create simple branches
@@ -696,6 +785,66 @@ class TestEdgeCases:
             ValueError, match="REINFORCE requires logits_derivative_function"
         ):
             reinforce_gradient(problem, theta, reinforce_config, reinforce_state)
+
+        # Test when branch derivatives are missing
+        branches_no_deriv = [
+            Branch(function=lambda th: th**2),  # No derivative function
+            Branch(function=lambda th: 2 * th),  # No derivative function
+        ]
+        logits_model_with_deriv = LogitsModel(
+            logits_function=lambda th: jnp.array([jnp.zeros_like(th), th]).flatten(),
+            logits_derivative_function=lambda th: jnp.array(
+                [jnp.zeros_like(th), jnp.ones_like(th)]
+            ).flatten(),
+        )
+        problem_no_branch_deriv = DiscreteProblem(
+            branches=branches_no_deriv, logits_model=logits_model_with_deriv
+        )
+
+        # Use larger sample size for more accurate estimation and disable baseline
+        simple_config = ReinforceConfig(num_samples=50000, use_baseline=False)
+        fresh_reinforce_state = ReinforceState()
+        gradient_no_deriv = reinforce_gradient(
+            problem_no_branch_deriv, theta, simple_config, fresh_reinforce_state
+        )
+
+        assert jnp.isfinite(gradient_no_deriv).all()
+
+        # Convert to scalar for validation
+        gradient_array = jnp.asarray(gradient_no_deriv)
+        if jnp.isscalar(gradient_no_deriv) or gradient_array.size == 1:
+            gradient_scalar = float(gradient_array.item())
+        else:
+            gradient_scalar = float(gradient_array.flatten()[0])
+
+        # Test mathematical correctness of the REINFORCE score function gradient:
+        # With logits=[0,θ] at θ=1, f₁=1, f₂=2, the second branch has higher reward
+        # and higher probability due to positive logits, so gradient should be positive
+        assert gradient_scalar > 0, (
+            f"REINFORCE gradient {gradient_scalar:.6f} should be positive: "
+            f"higher-reward branch is favored by positive logits derivative"
+        )
+
+        # Should be finite and non-trivial
+        assert jnp.isfinite(
+            gradient_scalar
+        ), f"Gradient should be finite, got {gradient_scalar}"
+        assert (
+            abs(gradient_scalar) > 0.01
+        ), f"Gradient {gradient_scalar:.6f} should be non-trivial"
+
+        # Should be in reasonable range for this problem setup
+        assert (
+            gradient_scalar < 5.0
+        ), f"Gradient {gradient_scalar:.6f} should be reasonable magnitude"
+
+        # Verify this is actually testing the missing derivatives path
+        # by checking that exact gradient computation would return None
+        exact_gradient = problem_no_branch_deriv.compute_exact_gradient(theta)
+        assert exact_gradient is None, (
+            "This test should be hitting the missing derivatives case "
+            "where exact gradient is unavailable"
+        )
 
         # Gumbel-Softmax should also raise error when logits derivatives missing
         gs_config = GumbelSoftmaxConfig(num_samples=50)
