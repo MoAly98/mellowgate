@@ -317,6 +317,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-3.23.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstandard-0.25.0-py313h54dd161_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb8e6e7a_2.conda
+      - pypi: https://files.pythonhosted.org/packages/78/d1/2e365e3aae80abdf8517eecb6bb86259f3e8097593c1f6566f798d2eccf6/sigmatch-0.0.4-py3-none-any.whl
       - pypi: .
       osx-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_2.conda
@@ -562,6 +563,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-3.23.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zstandard-0.25.0-py313hcb05632_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zstd-1.5.7-h8210216_2.conda
+      - pypi: https://files.pythonhosted.org/packages/78/d1/2e365e3aae80abdf8517eecb6bb86259f3e8097593c1f6566f798d2eccf6/sigmatch-0.0.4-py3-none-any.whl
       - pypi: .
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_2.conda
@@ -808,6 +810,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-3.23.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstandard-0.25.0-py313h9734d34_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-h6491c7d_2.conda
+      - pypi: https://files.pythonhosted.org/packages/78/d1/2e365e3aae80abdf8517eecb6bb86259f3e8097593c1f6566f798d2eccf6/sigmatch-0.0.4-py3-none-any.whl
       - pypi: .
 packages:
 - conda: https://conda.anaconda.org/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
@@ -4925,9 +4928,7 @@ packages:
 - pypi: .
   name: mellowgate
   version: 0.1.0
-  sha256: 6525c31af0ef1ee9d93ad83908e5529809a02e222dd75ec5c334d8e146009111
-  requires_dist:
-  - matplotlib>=3.10.6,<4
+  sha256: d2d239180d8dd55ca274dbb6be4a6d5a05e756dd4307739fa70ae79ce2dc6115
   requires_python: '>=3.11,<=3.13'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/mistune-3.1.4-pyhcf101f3_0.conda
@@ -6634,6 +6635,11 @@ packages:
   - pkg:pypi/setuptools?source=hash-mapping
   size: 748788
   timestamp: 1748804951958
+- pypi: https://files.pythonhosted.org/packages/78/d1/2e365e3aae80abdf8517eecb6bb86259f3e8097593c1f6566f798d2eccf6/sigmatch-0.0.4-py3-none-any.whl
+  name: sigmatch
+  version: 0.0.4
+  sha256: 52a1207b24e0ce4bd91061cf1c62ab65091ae59db3f0bb389831f44e6fbb3225
+  requires_python: '>=3.7'
 - conda: https://conda.anaconda.org/conda-forge/noarch/six-1.17.0-pyhe01879c_1.conda
   sha256: 458227f759d5e3fcec5d9b7acce54e10c9e1f4f4b7ec978f3bfd54ce4ee9853d
   md5: 3339e3b65d58accf4ca4fb8748ab16b3

@@ -1,5 +1,6 @@
 """Tests for mellowgate.api.estimators module."""
 
+import jax
 import jax.numpy as jnp
 import pytest
 
@@ -207,6 +208,44 @@ class TestReinforceGradient:
         assert gradient is not None
         assert jnp.isfinite(gradient).all()
 
+        # Test uninitialized baseline case - use fresh state with baseline enabled
+        config_baseline = ReinforceConfig(num_samples=50, use_baseline=True)
+        fresh_state = ReinforceState()  # Fresh uninitialized state
+
+        # For predictable baseline testing, use simple problem at theta=1.0
+        test_theta_single = jnp.array([1.0])
+        reinforce_gradient(
+            simple_problem, test_theta_single, config_baseline, fresh_state
+        )
+
+        assert fresh_state.initialized  # Should now be initialized
+        assert jnp.isfinite(fresh_state.baseline)
+
+        # The baseline should be set to the mean of sampled rewards
+        # For simple_problem at theta=1.0: branch1(1.0)=1.0, branch2(1.0)=1.0
+        # So baseline should be close to 1.0 (the expected value)
+        assert (
+            jnp.abs(fresh_state.baseline - 1.0) < 0.5
+        )  # Allow some variance due to sampling
+
+        # Test scalar theta case to exercise scalar input handling
+        scalar_theta = test_theta[0]  # Extract scalar
+        scalar_gradient = reinforce_gradient(
+            simple_problem, scalar_theta, config, state
+        )
+
+        # Verify scalar and array versions give equivalent results
+        array_gradient = reinforce_gradient(
+            simple_problem, test_theta[:1], config, state
+        )
+        assert jnp.isfinite(scalar_gradient)
+        assert jnp.isfinite(array_gradient).all()
+        # They should be approximately equal (allowing for sampling variance)
+        # Both should be scalars, so direct comparison
+        assert (
+            jnp.abs(scalar_gradient - array_gradient) < 0.1
+        ), "Scalar and array gradients should be approximately equal"
+
     def test_reinforce_reproducibility(self, simple_problem, test_theta):
         """Test REINFORCE reproducibility."""
         config = ReinforceConfig(num_samples=100)
@@ -289,53 +328,313 @@ class TestGumbelSoftmaxGradient:
         assert jnp.isfinite(gradient).all() or jnp.abs(gradient).max() < 1e10
 
 
-class TestEstimatorComparison:
-    """Test comparison between different estimators."""
+class TestAnalyticalGradientValidation:
+    """Test gradient estimators against known analytical gradients."""
 
-    def test_estimator_consistency(self, simple_problem):
-        """Test that estimators give reasonable results for the same problem."""
+    def test_finite_difference_vs_analytical(self):
+        """Test finite difference estimator accuracy against exact gradient."""
+        # Simple problem with polynomial branches for known analytical solution
+        branches = [
+            Branch(function=lambda th: th**2, derivative_function=lambda th: 2 * th),
+            Branch(function=lambda th: th**3, derivative_function=lambda th: 3 * th**2),
+        ]
+        logits_model = LogitsModel(
+            logits_function=lambda th: jnp.array([th, -th]),
+            logits_derivative_function=lambda th: jnp.array(
+                [jnp.ones_like(th), -jnp.ones_like(th)]
+            ),
+        )
+        problem = DiscreteProblem(branches=branches, logits_model=logits_model)
+
         theta = jnp.array([1.0])
+        exact_gradient = problem.compute_exact_gradient(theta)
+        assert exact_gradient is not None, "Should have exact gradient"
 
-        # Finite difference
-        fd_config = FiniteDifferenceConfig(step_size=1e-3, num_samples=1000)
-        fd_gradient = finite_difference_gradient(simple_problem, theta, fd_config)
+        # Finite difference with high precision
+        fd_config = FiniteDifferenceConfig(step_size=1e-6, num_samples=10000)
+        fd_gradient = finite_difference_gradient(problem, theta, fd_config)
 
-        # REINFORCE
-        reinforce_config = ReinforceConfig(num_samples=1000)
-        reinforce_state = ReinforceState()
-        reinforce_grad = reinforce_gradient(
-            simple_problem, theta, reinforce_config, reinforce_state
+        relative_error = jnp.abs((fd_gradient - exact_gradient) / exact_gradient)
+        assert relative_error < 0.05, (
+            f"Finite difference relative error {float(relative_error):.4f} "
+            f"exceeds tolerance"
         )
 
-        # Gumbel-Softmax
-        gs_config = GumbelSoftmaxConfig(temperature=1.0, num_samples=1000)
-        gs_gradient = gumbel_softmax_gradient(simple_problem, theta, gs_config)
+    def test_reinforce_vs_analytical(self):
+        """Test REINFORCE estimator accuracy against exact gradient."""
+        branches = [
+            Branch(function=lambda th: th**2, derivative_function=lambda th: 2 * th),
+            Branch(function=lambda th: th**3, derivative_function=lambda th: 3 * th**2),
+        ]
+        logits_model = LogitsModel(
+            logits_function=lambda th: jnp.array([th, -th]),
+            logits_derivative_function=lambda th: jnp.array(
+                [jnp.ones_like(th), -jnp.ones_like(th)]
+            ),
+        )
+        problem = DiscreteProblem(branches=branches, logits_model=logits_model)
 
-        # All should be finite and of correct shape
-        assert jnp.isfinite(fd_gradient).all()
-        assert jnp.isfinite(reinforce_grad).all()
-        assert jnp.isfinite(gs_gradient).all()
+        theta = jnp.array([1.0])
+        exact_gradient = problem.compute_exact_gradient(theta)
+        assert exact_gradient is not None, "Should have exact gradient"
 
-        assert jnp.asarray(fd_gradient).shape == theta.shape
-        assert jnp.asarray(reinforce_grad).shape == theta.shape
-        assert jnp.asarray(gs_gradient).shape == theta.shape
+        # REINFORCE with many samples for accuracy
+        reinforce_config = ReinforceConfig(num_samples=20000, use_baseline=True)
+        reinforce_state = ReinforceState()
+        reinforce_grad = reinforce_gradient(
+            problem, theta, reinforce_config, reinforce_state
+        )
 
-    def test_exact_gradient_comparison(self, simple_problem):
-        """Compare estimators against exact gradient when available."""
+        relative_error = jnp.abs((reinforce_grad - exact_gradient) / exact_gradient)
+        assert (
+            relative_error < 0.05
+        ), f"REINFORCE relative error {float(relative_error):.4f} exceeds tolerance"
+
+    def test_gumbel_softmax_vs_analytical(self):
+        """Test Gumbel-Softmax estimator accuracy against exact gradient."""
+        branches = [
+            Branch(function=lambda th: th**2, derivative_function=lambda th: 2 * th),
+            Branch(function=lambda th: th**3, derivative_function=lambda th: 3 * th**2),
+        ]
+        logits_model = LogitsModel(
+            logits_function=lambda th: jnp.array([th, -th]),
+            logits_derivative_function=lambda th: jnp.array(
+                [jnp.ones_like(th), -jnp.ones_like(th)]
+            ),
+        )
+        problem = DiscreteProblem(branches=branches, logits_model=logits_model)
+
+        theta = jnp.array([1.0])
+        exact_gradient = problem.compute_exact_gradient(theta)
+        assert exact_gradient is not None, "Should have exact gradient"
+
+        # Gumbel-Softmax with many samples for accuracy
+        gs_config = GumbelSoftmaxConfig(temperature=0.1, num_samples=20000)
+        gs_grad = gumbel_softmax_gradient(problem, theta, gs_config)
+
+        relative_error = jnp.abs((gs_grad - exact_gradient) / exact_gradient)
+        assert relative_error < 0.05, (
+            f"Gumbel-Softmax relative error {float(relative_error):.4f} "
+            f"exceeds tolerance"
+        )
+
+    def test_binary_softmax_known_analytical_result(self):
+        """Test binary softmax problem with known analytical result."""
+        # Binary problem: pass=1, fail=0, with logits α=[aθ, -aθ] where a=10
+        # Uses default softmax probability function:
+        # p₁ = exp(aθ)/[exp(aθ) + exp(-aθ)]
+        # p₂ = exp(-aθ)/[exp(aθ) + exp(-aθ)]
+        # Expected value: E = p₁ × 1 + p₂ × 0 = p₁
+        # At θ=0: p₁ = 0.5, so E = 0.5
+        # Gradient computed using automatic differentiation in mellowgate: 2.5
+        branches = [
+            Branch(
+                function=lambda th: jnp.ones_like(th),
+                derivative_function=lambda th: jnp.zeros_like(th),
+            ),
+            Branch(
+                function=lambda th: jnp.zeros_like(th),
+                derivative_function=lambda th: jnp.zeros_like(th),
+            ),
+        ]
+        logits_model = LogitsModel(
+            logits_function=lambda th: jnp.array([10 * th, -10 * th]),
+            logits_derivative_function=lambda th: jnp.array(
+                [10 * jnp.ones_like(th), -10 * jnp.ones_like(th)]
+            ),
+        )
+        problem = DiscreteProblem(branches=branches, logits_model=logits_model)
+
+        theta = jnp.array([0.0])
+        analytical_gradient = 5.0
+
+        # Test REINFORCE and Gumbel-Softmax estimators
+        reinforce_config = ReinforceConfig(num_samples=15000, use_baseline=False)
+        reinforce_state = ReinforceState()
+        reinforce_grad = reinforce_gradient(
+            problem, theta, reinforce_config, reinforce_state
+        )
+
+        # Use lower temperature for better Gumbel-Softmax accuracy
+        gs_config = GumbelSoftmaxConfig(temperature=0.1, num_samples=15000)
+        gs_grad = gumbel_softmax_gradient(problem, theta, gs_config)
+
+        # Verify estimators are close to analytical gradient
+        for name, grad_est in [
+            ("REINFORCE", reinforce_grad),
+            ("GumbelSoftmax", gs_grad),
+        ]:
+            grad_val = float(jnp.asarray(grad_est).item())
+            error = abs(grad_val - analytical_gradient)
+            rel_error = error / analytical_gradient
+
+            # Both estimators should be reasonably accurate
+            assert rel_error < 0.05, (
+                f"{name} relative error {rel_error:.4f} exceeds 5% tolerance "
+                f"(estimated={grad_val:.4f}, expected={analytical_gradient:.4f})"
+            )
+
+        print(
+            f"✓ REINFORCE gradient: " f"{float(jnp.asarray(reinforce_grad).item()):.3f}"
+        )
+        print(
+            f"✓ Gumbel-Softmax gradient: " f"{float(jnp.asarray(gs_grad).item()):.3f}"
+        )
+        print(f"✓ Expected analytical: {analytical_gradient}")
+        print("✓ Gradient estimators produce expected results")
+
+    def test_binary_sigmoid_probability_function(self):
+        """Test gradient estimators with custom sigmoid probability function."""
+        # Binary problem with custom sigmoid probability function (not softmax)
+        # For binary case with logits [α₁, α₂], sigmoid gives:
+        # p₁ = sigmoid(α₁), p₂ = sigmoid(α₂)
+        # Note: These don't sum to 1, so we normalize:
+        # p₁ = sigmoid(α₁)/(sigmoid(α₁) + sigmoid(α₂))
+
+        def sigmoid_probability_function(logits):
+            """Custom sigmoid probability function"""
+            return 1.0 / (1.0 + jnp.exp(-logits))
+
+        branches = [
+            Branch(
+                function=lambda th: jnp.ones_like(th),
+                derivative_function=lambda th: jnp.zeros_like(th),
+            ),
+            Branch(
+                function=lambda th: jnp.zeros_like(th),
+                derivative_function=lambda th: jnp.zeros_like(th),
+            ),
+        ]
+        logits_model = LogitsModel(
+            logits_function=lambda th: jnp.array([5 * th, -5 * th]),
+            logits_derivative_function=lambda th: jnp.array(
+                [5 * jnp.ones_like(th), -5 * jnp.ones_like(th)]
+            ),
+            probability_function=sigmoid_probability_function,
+        )
+        problem = DiscreteProblem(branches=branches, logits_model=logits_model)
+
+        theta = jnp.array([0.0])
+
+        # Get exact gradient from mellowgate
+        exact_gradient = problem.compute_exact_gradient(theta)
+        assert exact_gradient is not None, "Should have exact gradient"
+
+        # Test REINFORCE estimator
+        reinforce_config = ReinforceConfig(num_samples=15000, use_baseline=False)
+        reinforce_state = ReinforceState()
+        reinforce_grad = reinforce_gradient(
+            problem, theta, reinforce_config, reinforce_state
+        )
+
+        # Test Gumbel-Softmax estimator
+        gs_config = GumbelSoftmaxConfig(temperature=0.1, num_samples=15000)
+        gs_grad = gumbel_softmax_gradient(problem, theta, gs_config)
+
+        # Verify estimators are close to exact gradient
+        for name, grad_est in [
+            ("REINFORCE", reinforce_grad),
+            ("GumbelSoftmax", gs_grad),
+        ]:
+            grad_val = float(jnp.asarray(grad_est).item())
+            exact_val = float(jnp.asarray(exact_gradient).item())
+            rel_error = abs(grad_val - exact_val) / abs(exact_val)
+
+            assert rel_error < 0.015, (
+                f"{name} relative error {rel_error:.4f} vs exact gradient "
+                f"(estimated={grad_val:.4f}, exact={exact_val:.4f})"
+            )
+
+    def test_exact_gradient_vs_analytical_computation(self):
+        """Test mellowgate exact gradient vs hand-calculated analytical result."""
+        # Simple polynomial problem where we can calculate the exact gradient by hand
+        # Branch functions: f₁(θ) = θ², f₂(θ) = 2θ
+        # Logits: α₁ = θ, α₂ = -θ
+        # Probabilities: p₁ = exp(θ)/(exp(θ) + exp(-θ)), p₂ = exp(-θ)/(exp(θ) + exp(-θ))
+        # Expected value: E = p₁θ² + p₂(2θ)
+
+        branches = [
+            Branch(function=lambda th: th**2, derivative_function=lambda th: 2 * th),
+            Branch(
+                function=lambda th: 2 * th,
+                derivative_function=lambda th: 2 * jnp.ones_like(th),
+            ),
+        ]
+        logits_model = LogitsModel(
+            logits_function=lambda th: jnp.array([th, -th]),
+            logits_derivative_function=lambda th: jnp.array(
+                [jnp.ones_like(th), -jnp.ones_like(th)]
+            ),
+        )
+        problem = DiscreteProblem(branches=branches, logits_model=logits_model)
+
         theta = jnp.array([1.0])
 
-        # Get exact gradient
-        exact_gradient = simple_problem.compute_exact_gradient(theta)
-        assert exact_gradient is not None
+        # Get exact gradient from mellowgate
+        exact_gradient = problem.compute_exact_gradient(theta)
+        assert exact_gradient is not None, "Should have exact gradient"
 
-        # Finite difference with very small step size and many samples
-        fd_config = FiniteDifferenceConfig(step_size=1e-5, num_samples=5000)
-        fd_gradient = finite_difference_gradient(simple_problem, theta, fd_config)
+        # Verify using JAX autodiff for the analytical result
+        def expected_value_function(theta_val):
+            """Expected value function E(θ) = p₁(θ)θ² + p₂(θ)(2θ)"""
+            logits = jnp.array([theta_val, -theta_val])
+            probs = jax.nn.softmax(logits)
+            p1, p2 = probs[0], probs[1]
+            return p1 * theta_val**2 + p2 * (2 * theta_val)
 
-        # Should be reasonably close to exact gradient
-        # Note: This is a statistical test and might occasionally fail
-        relative_error = jnp.abs((fd_gradient - exact_gradient) / exact_gradient)
-        assert relative_error < 0.1  # Within 10%
+        # Compute analytical gradient using JAX autodiff (should be exact)
+        grad_fn = jax.grad(expected_value_function)
+        jax_analytical_gradient = grad_fn(1.0)
+
+        # Also verify with manual calculation (should match JAX)
+        theta_val = 1.0
+        p1 = jnp.exp(theta_val) / (jnp.exp(theta_val) + jnp.exp(-theta_val))
+        p2 = 1.0 - p1
+
+        # Correct softmax derivatives:
+        # p₁ = exp(θ)/(exp(θ) + exp(-θ))
+        # Using quotient rule:
+        # dp₁/dθ
+        # = [exp(θ)(exp(θ) + exp(-θ)) - exp(θ)(exp(θ) - exp(-θ))] / (exp(θ) + exp(-θ))²
+        # = [exp(θ)(2exp(-θ))] / (exp(θ) + exp(-θ))²
+        # = 2exp(θ-θ) / (exp(θ) + exp(-θ))²
+        # = 2 / (exp(θ) + exp(-θ))²
+        # using chain rule
+        # dp₁/dθ = ∂p₁/∂α₁ × ∂α₁/∂θ + ∂p₁/∂α₂ × ∂α₂/∂θ
+        #        = p₁(1-p₁) × 1 + (-p₁p₂) × (-1) = p₁(1-p₁) + p₁p₂
+        #        = p₁p₂ + p₁p₂
+        #        = 2p₁p₂
+
+        dp1_dtheta = 2 * p1 * p2
+        dp2_dtheta = -2 * p1 * p2  # dp2/dtheta = -dp1/dtheta since p1 + p2 = 1
+
+        manual_analytical_gradient = (
+            dp1_dtheta * theta_val**2
+            + p1 * 2 * theta_val
+            + dp2_dtheta * 2 * theta_val
+            + p2 * 2
+        )
+
+        # Compare both analytical methods
+        exact_val = float(jnp.asarray(exact_gradient).item())
+        jax_analytical_val = float(jax_analytical_gradient)
+        manual_analytical_val = float(manual_analytical_gradient)
+
+        # Both analytical methods should match
+        analytical_diff = abs(jax_analytical_val - manual_analytical_val) / abs(
+            jax_analytical_val
+        )
+        assert analytical_diff < 1e-12, (
+            f"Manual vs JAX analytical mismatch {analytical_diff:.2e} "
+            f"(JAX={jax_analytical_val:.10f}, manual={manual_analytical_val:.10f})"
+        )
+
+        # Exact gradient should match analytical
+        rel_error = abs(exact_val - manual_analytical_val) / abs(manual_analytical_val)
+        assert rel_error < 1e-12, (
+            f"Exact gradient computation error {rel_error:.2e} vs analytical "
+            f"(exact={exact_val:.10f}, analytical={jax_analytical_val:.10f})"
+        )
 
 
 class TestEdgeCases:
@@ -387,6 +686,43 @@ class TestEdgeCases:
         # Should handle extreme values without error
         assert jnp.isfinite(fd_gradient).all()
 
+        # Try to trigger NaN warnings with very extreme conditions
+        super_extreme_theta = jnp.array([1e6])  # Very large value
+
+        # For REINFORCE with extreme conditions to trigger NaN warning
+        reinforce_extreme_config = ReinforceConfig(num_samples=10, use_baseline=False)
+        reinforce_state = ReinforceState()
+        with pytest.warns(
+            RuntimeWarning, match="REINFORCE gradient estimation produced"
+        ):
+            reinforce_extreme_gradient = reinforce_gradient(
+                simple_problem,
+                super_extreme_theta,
+                reinforce_extreme_config,
+                reinforce_state,
+            )
+            # After NaN replacement, gradient should be finite (replaced with 0.0)
+            assert jnp.all(jnp.isfinite(reinforce_extreme_gradient))
+            # Should be 0.0 due to NaN replacement
+            assert jnp.allclose(
+                reinforce_extreme_gradient, 0.0
+            ), "NaN values should be replaced with 0.0"
+
+        # For Gumbel-Softmax with extreme conditions
+        gs_extreme_config = GumbelSoftmaxConfig(temperature=1e-6, num_samples=5000)
+        with pytest.warns(
+            RuntimeWarning, match="Gumbel-Softmax gradient estimation produced"
+        ):
+            gs_extreme_gradient = gumbel_softmax_gradient(
+                simple_problem, super_extreme_theta, gs_extreme_config
+            )
+            # After NaN replacement, gradient should be finite (replaced with 0.0)
+            assert jnp.all(jnp.isfinite(gs_extreme_gradient))
+            # Should be 0.0 due to NaN replacement
+            assert jnp.allclose(
+                gs_extreme_gradient, 0.0
+            ), "NaN values should be replaced with 0.0"
+
     def test_scalar_input_handling(self, simple_problem):
         """Test handling of scalar vs array inputs across estimators."""
         # Test scalar input (not array)
@@ -412,6 +748,20 @@ class TestEdgeCases:
         gs_result = gumbel_softmax_gradient(simple_problem, scalar_theta, gs_config)
         assert isinstance(gs_result, float)  # Should return scalar for scalar input
 
+    def test_empty_array_inputs(self, simple_problem):
+        """Test handling of empty arrays."""
+        import jax.random as random
+
+        theta = jnp.array([])
+        key = random.PRNGKey(42)
+
+        # Test compute_stochastic_values with empty theta array
+        stoch_vals = simple_problem.compute_stochastic_values(
+            theta, num_samples=10, key=key
+        )
+        assert isinstance(stoch_vals, jnp.ndarray)
+        assert stoch_vals.shape == (0, 10)
+
     def test_estimator_missing_requirements(self):
         """Test estimators when required derivatives are missing."""
         # Create simple branches
@@ -435,6 +785,66 @@ class TestEdgeCases:
             ValueError, match="REINFORCE requires logits_derivative_function"
         ):
             reinforce_gradient(problem, theta, reinforce_config, reinforce_state)
+
+        # Test when branch derivatives are missing
+        branches_no_deriv = [
+            Branch(function=lambda th: th**2),  # No derivative function
+            Branch(function=lambda th: 2 * th),  # No derivative function
+        ]
+        logits_model_with_deriv = LogitsModel(
+            logits_function=lambda th: jnp.array([jnp.zeros_like(th), th]).flatten(),
+            logits_derivative_function=lambda th: jnp.array(
+                [jnp.zeros_like(th), jnp.ones_like(th)]
+            ).flatten(),
+        )
+        problem_no_branch_deriv = DiscreteProblem(
+            branches=branches_no_deriv, logits_model=logits_model_with_deriv
+        )
+
+        # Use larger sample size for more accurate estimation and disable baseline
+        simple_config = ReinforceConfig(num_samples=50000, use_baseline=False)
+        fresh_reinforce_state = ReinforceState()
+        gradient_no_deriv = reinforce_gradient(
+            problem_no_branch_deriv, theta, simple_config, fresh_reinforce_state
+        )
+
+        assert jnp.isfinite(gradient_no_deriv).all()
+
+        # Convert to scalar for validation
+        gradient_array = jnp.asarray(gradient_no_deriv)
+        if jnp.isscalar(gradient_no_deriv) or gradient_array.size == 1:
+            gradient_scalar = float(gradient_array.item())
+        else:
+            gradient_scalar = float(gradient_array.flatten()[0])
+
+        # Test mathematical correctness of the REINFORCE score function gradient:
+        # With logits=[0,θ] at θ=1, f₁=1, f₂=2, the second branch has higher reward
+        # and higher probability due to positive logits, so gradient should be positive
+        assert gradient_scalar > 0, (
+            f"REINFORCE gradient {gradient_scalar:.6f} should be positive: "
+            f"higher-reward branch is favored by positive logits derivative"
+        )
+
+        # Should be finite and non-trivial
+        assert jnp.isfinite(
+            gradient_scalar
+        ), f"Gradient should be finite, got {gradient_scalar}"
+        assert (
+            abs(gradient_scalar) > 0.01
+        ), f"Gradient {gradient_scalar:.6f} should be non-trivial"
+
+        # Should be in reasonable range for this problem setup
+        assert (
+            gradient_scalar < 5.0
+        ), f"Gradient {gradient_scalar:.6f} should be reasonable magnitude"
+
+        # Verify this is actually testing the missing derivatives path
+        # by checking that exact gradient computation would return None
+        exact_gradient = problem_no_branch_deriv.compute_exact_gradient(theta)
+        assert exact_gradient is None, (
+            "This test should be hitting the missing derivatives case "
+            "where exact gradient is unavailable"
+        )
 
         # Gumbel-Softmax should also raise error when logits derivatives missing
         gs_config = GumbelSoftmaxConfig(num_samples=50)
