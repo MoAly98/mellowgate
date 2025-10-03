@@ -448,8 +448,8 @@ class TestEdgeCases:
     def test_custom_sampling_function(self):
         """Test custom sampling function path."""
 
-        def custom_sampler(probs):
-            return 0  # Always pick first branch
+        def custom_sampler(probs, key):
+            return jnp.asarray(0)  # Always pick first branch
 
         branches = [Branch(function=lambda th: th), Branch(function=lambda th: 2 * th)]
         logits_model = LogitsModel(logits_function=lambda th: jnp.array([0.0, 1.0]))
@@ -673,3 +673,195 @@ class TestKnownAnalyticalResults:
         gradient = problem.compute_exact_gradient(theta)
         assert gradient is not None
         assert jnp.allclose(gradient, jnp.array([0.0]), atol=1e-6)
+
+    def test_exact_gradient_with_softmax_analytical(self):
+        """Test exact gradient with softmax probability function against
+        known analytical result.
+
+        Uses constant functions f1=1, f2=2 with linear logits α1=θ, α2=0.
+        Expected: E[f] = 2 - sigmoid(θ)
+        so dE/dθ = -sigmoid'(θ) = -sigmoid(θ)(1-sigmoid(θ))
+        At θ=0: gradient = -0.5 * 0.5 = -0.25
+        """
+        # Constant branches: f1(θ) = 1, f2(θ) = 2
+        branches = [
+            Branch(
+                function=lambda th: jnp.ones_like(th),
+                derivative_function=lambda th: jnp.zeros_like(th),
+            ),
+            Branch(
+                function=lambda th: 2 * jnp.ones_like(th),
+                derivative_function=lambda th: jnp.zeros_like(th),
+            ),
+        ]
+
+        # Linear logits: α1(θ) = θ, α2(θ) = 0 → softmax gives sigmoid probabilities
+        logits_model = LogitsModel(
+            logits_function=lambda th: jnp.array([th, jnp.zeros_like(th)]),
+            logits_derivative_function=lambda th: jnp.array(
+                [jnp.ones_like(th), jnp.zeros_like(th)]
+            ),
+        )
+
+        problem = DiscreteProblem(branches=branches, logits_model=logits_model)
+        theta = jnp.array([0.0])
+
+        # Compute gradient
+        gradient = problem.compute_exact_gradient(theta)
+
+        # Verify shape and type
+        assert gradient is not None, "Gradient should not be None"
+        assert isinstance(
+            gradient, jnp.ndarray
+        ), "Gradient should be ndarray for array input"
+        assert gradient.shape == theta.shape, "Gradient shape should match input"
+
+        # Verify exact analytical value:
+        # -sigmoid(0) * (1 - sigmoid(0)) = -0.5 * 0.5 = -0.25
+        expected_gradient = -0.25
+        assert jnp.allclose(
+            gradient, jnp.array([expected_gradient]), atol=1e-12
+        ), f"Expected gradient {expected_gradient}, got {gradient[0]}"
+
+    def test_exact_gradient_with_sigmoid_analytical(self):
+        """Test exact gradient with custom sigmoid probability function against
+        known analytical result.
+
+        Uses linear functions f1=θ, f2=0 with custom binary sigmoid probabilities.
+        Custom sigmoid: p1 = 1/(1+exp(-2θ)), p2 = 1/(1+exp(2θ))
+        Expected: E[f] = θ * p1(θ), so dE/dθ = p1(θ) + θ * dp1/dθ
+        At θ=0: p1=0.5, dp1/dθ=1, so gradient = 0.5 + 0*1 = 0.5
+        """
+        # Linear branches: f1(θ) = θ, f2(θ) = 0
+        branches = [
+            Branch(
+                function=lambda th: th,
+                derivative_function=lambda th: jnp.ones_like(th),
+            ),
+            Branch(
+                function=lambda th: jnp.zeros_like(th),
+                derivative_function=lambda th: jnp.zeros_like(th),
+            ),
+        ]
+
+        # Custom binary sigmoid probability function
+        def sigmoid(logits):
+            """Binary sigmoid ensuring probabilities sum to 1."""
+            return 1.0 / (1 + jnp.exp(-logits))
+
+        # Symmetric logits: α1(θ) = θ, α2(θ) = -θ
+        logits_model = LogitsModel(
+            logits_function=lambda th: jnp.array([th, -th]),
+            logits_derivative_function=lambda th: jnp.array(
+                [jnp.ones_like(th), -jnp.ones_like(th)]
+            ),
+            probability_function=sigmoid,
+        )
+
+        problem = DiscreteProblem(branches=branches, logits_model=logits_model)
+        theta = jnp.array([0.0])
+
+        # Verify probabilities are correct at θ=0
+        probs = problem.compute_probabilities(theta)
+        assert jnp.allclose(probs, jnp.array([[0.5], [0.5]]), atol=1e-12)
+
+        # Compute gradient
+        gradient = problem.compute_exact_gradient(theta)
+
+        # Verify shape and type
+        assert gradient is not None, "Gradient should not be None"
+        assert isinstance(
+            gradient, jnp.ndarray
+        ), "Gradient should be ndarray for array input"
+        assert gradient.shape == theta.shape, "Gradient shape should match input"
+
+        # Verify exact analytical value: p1(0) + 0 * dp1/dθ|θ=0 = 0.5 + 0 = 0.5
+        expected_gradient = 0.5
+        assert jnp.allclose(
+            gradient, jnp.array([expected_gradient]), atol=1e-12
+        ), f"Expected gradient {expected_gradient}, got {gradient[0]}"
+
+    def test_exact_gradient_with_trigonometric_functions_analytical(self):
+        """Test exact gradient with trigonometric functions and custom sigmoid
+        probabilities.
+
+        Uses trigonometric branches: f1(θ) = sin(θ), f2(θ) = cos(θ)
+        with custom sigmoid probabilities.
+        Custom sigmoid: p1 = 1/(1+exp(-2θ)), p2 = 1/(1+exp(2θ))
+        Expected: E[f] = sin(θ)*p1(θ) + cos(θ)*p2(θ)
+        At θ=π/6: sin(π/6)=0.5, cos(π/6)=√3/2, p1≈0.731, p2≈0.269
+        Expected gradient requires chain rule with sigmoid derivatives.
+        """
+        # Trigonometric branches: f1(θ) = sin(θ), f2(θ) = cos(θ)
+        branches = [
+            Branch(
+                function=lambda th: jnp.sin(th),
+                derivative_function=lambda th: jnp.cos(th),
+            ),
+            Branch(
+                function=lambda th: jnp.cos(th),
+                derivative_function=lambda th: -jnp.sin(th),
+            ),
+        ]
+
+        # Custom binary sigmoid probability function
+        def binary_sigmoid(logits):
+            """Binary sigmoid ensuring probabilities sum to 1."""
+            return 1.0 / (1 + jnp.exp(-logits))
+
+        # Asymmetric logits: α1(θ) = 2θ, α2(θ) = -2θ → sigmoid probabilities
+        logits_model = LogitsModel(
+            logits_function=lambda th: jnp.array([2 * th, -2 * th]),
+            logits_derivative_function=lambda th: jnp.array(
+                [2 * jnp.ones_like(th), -2 * jnp.ones_like(th)]
+            ),
+            probability_function=binary_sigmoid,
+        )
+
+        problem = DiscreteProblem(branches=branches, logits_model=logits_model)
+        theta = jnp.array([jnp.pi / 6])  # θ = π/6 = 30 degrees
+
+        # At θ=π/6: p1 = 1/(1+exp(-π/3)) ≈ 0.731, p2 ≈ 0.269
+        probs = problem.compute_probabilities(theta)
+        expected_p1 = 1.0 / (1 + jnp.exp(-jnp.pi / 3))
+        expected_p2 = 1.0 - expected_p1
+        assert jnp.allclose(
+            probs, jnp.array([[expected_p1], [expected_p2]]), atol=1e-12
+        )
+
+        # Verify expected value: E[f] = sin(π/6)*p1 + cos(π/6)*p2 = 0.5*p1 + (√3/2)*p2
+        expected_val = problem.compute_expected_value(theta)
+        analytical_expected_val = 0.5 * expected_p1 + (jnp.sqrt(3) / 2) * expected_p2
+        assert jnp.allclose(
+            expected_val, jnp.array([analytical_expected_val]), atol=1e-12
+        )
+
+        # Compute gradient
+        gradient = problem.compute_exact_gradient(theta)
+
+        # Verify shape and type
+        assert gradient is not None, "Gradient should not be None"
+        assert isinstance(
+            gradient, jnp.ndarray
+        ), "Gradient should be ndarray for array input"
+        assert gradient.shape == theta.shape, "Gradient shape should match input"
+
+        # Analytical gradient calculation using chain rule:
+        # dE/dθ = d/dθ[sin(θ)*p1(θ) + cos(θ)*p2(θ)]
+        # = cos(θ)*p1(θ) + sin(θ)*dp1/dθ - sin(θ)*p2(θ) + cos(θ)*dp2/dθ
+        # where dp1/dθ = 2*p1(θ)*(1-p1(θ)) and dp2/dθ = -dp1/dθ
+        sin_val = 0.5  # sin(π/6)
+        cos_val = jnp.sqrt(3) / 2  # cos(π/6)
+        dp1_dtheta = 2 * expected_p1 * (1 - expected_p1)
+        dp2_dtheta = -dp1_dtheta
+
+        expected_gradient = (
+            cos_val * expected_p1
+            + sin_val * dp1_dtheta
+            + (-sin_val) * expected_p2
+            + cos_val * dp2_dtheta
+        )
+
+        assert jnp.allclose(
+            gradient, jnp.array([expected_gradient]), atol=1e-10
+        ), f"Expected gradient {expected_gradient}, got {gradient[0]}"

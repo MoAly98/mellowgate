@@ -228,7 +228,6 @@ def _reinforce_gradient_vectorized(
     sampled_choice_indices: jnp.ndarray,
     baseline_values: jnp.ndarray,
     num_samples: int,
-    use_baseline: bool,
 ) -> jnp.ndarray:
     """Vectorized REINFORCE gradient computation with JIT compilation.
 
@@ -431,7 +430,6 @@ def reinforce_gradient(
         sampled_choice_indices,
         baseline_values,
         config.num_samples,
-        config.use_baseline,
     )
 
     # Check for NaN or Inf values and handle them robustly
