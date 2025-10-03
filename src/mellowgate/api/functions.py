@@ -544,7 +544,12 @@ class DiscreteProblem:
         else:
             # Multiple theta case - vectorize the Jacobian computation
             prob_jacobian_vectorized = jax.vmap(prob_jacobian_fn)
-            probability_gradients = prob_jacobian_vectorized(theta_array).T
+            # Shape: (num_theta, num_branches, ...)
+            jacobian_result = prob_jacobian_vectorized(
+                theta_array
+            )  # Shape: (num_theta, num_branches, ...)
+            # Reshape to (num_branches, num_theta) regardless of trailing dimensions
+            probability_gradients = jacobian_result.reshape(theta_array.shape[0], -1).T
 
         # Apply policy gradient theorem
         # For 2D arrays, sum along branch dimension (axis=0)
