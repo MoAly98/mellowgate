@@ -245,7 +245,6 @@ def _reinforce_gradient_vectorized(
         sampled_choice_indices: Shape (num_theta, num_samples)
         baseline_values: Shape (num_theta,)
         num_samples: Number of samples per theta
-        use_baseline: Whether to use baseline for variance reduction
 
     Returns:
         jnp.ndarray: Gradient estimates, shape (num_theta,)
@@ -383,13 +382,28 @@ def reinforce_gradient(
         discrete_problem.logits_model.logits_derivative_function(theta_array)
     )
 
-    # Convert logits gradients to actual score function gradients
-    # For custom probability functions, we need ∇θ log π(x|θ), not ∇θ α(x|θ)
-    # For the binary sigmoid case with complementary probabilities:
-    # π0 = sigmoid(α0), π1 = sigmoid(α1) where α1 = -α0
-    # ∇θ log π0 = (∇θ α0) * (1 - π0) = (∇θ α0) * π1
-    # ∇θ log π1 = (∇θ α1) * (1 - π1) = (∇θ α1) * π0
-    score_function_gradients = logits_gradients * (1 - choice_probabilities)
+    # Compute score function gradients correctly using JAX autodiff
+    # ∇θ log π(x|θ) = (1/π(x|θ)) * ∇θ π(x|θ)
+    # where ∇θ π(x|θ) is computed using chain rule through logits
+    def compute_probabilities_for_theta(theta_single):
+        """Wrapper to compute probabilities for a single theta value."""
+        logits = discrete_problem.logits_model.logits_function(theta_single)
+        return discrete_problem.logits_model.probability_function(logits)
+
+    # Use JAX jacfwd to compute probability gradients correctly
+    prob_jacobian_fn = jax.jacfwd(compute_probabilities_for_theta)
+
+    if theta_array.shape[0] == 1:
+        # Single theta case
+        probability_gradients = prob_jacobian_fn(theta_array[0])
+        probability_gradients = probability_gradients.reshape(-1, 1)
+    else:
+        # Multiple theta case - vectorize the Jacobian computation
+        prob_jacobian_vectorized = jax.vmap(prob_jacobian_fn)
+        probability_gradients = prob_jacobian_vectorized(theta_array).T
+
+    # Convert to score function gradients: ∇θ log π(x|θ) = (∇θ π(x|θ)) / π(x|θ)
+    score_function_gradients = probability_gradients / choice_probabilities
 
     # Generate all random samples at once using batched key generation
     key = jax.random.PRNGKey(0)  # Use deterministic key for reproducibility
@@ -650,13 +664,31 @@ def gumbel_softmax_gradient(
         discrete_problem.logits_model.logits_derivative_function(theta_array)
     )
 
-    # Convert logits gradients to actual score function gradients for Gumbel-Softmax
-    # For the binary sigmoid case with complementary probabilities:
-    # ∇θ log π_i = (∇θ α_i) * (1 - π_i)
+    # Compute score function gradients correctly using JAX autodiff for Gumbel-Softmax
+    # ∇θ log π(x|θ) = (1/π(x|θ)) * ∇θ π(x|θ)
+    def compute_probabilities_for_theta(theta_single):
+        """Wrapper to compute probabilities for a single theta value."""
+        logits = discrete_problem.logits_model.logits_function(theta_single)
+        return discrete_problem.logits_model.probability_function(logits)
+
+    # Use JAX jacfwd to compute probability gradients correctly
+    prob_jacobian_fn = jax.jacfwd(compute_probabilities_for_theta)
+
     choice_probabilities = jnp.asarray(
         discrete_problem.compute_probabilities(theta_array)
     )
-    score_function_gradients = logits_gradients * (1 - choice_probabilities)
+
+    if theta_array.shape[0] == 1:
+        # Single theta case
+        probability_gradients = prob_jacobian_fn(theta_array[0])
+        probability_gradients = probability_gradients.reshape(-1, 1)
+    else:
+        # Multiple theta case - vectorize the Jacobian computation
+        prob_jacobian_vectorized = jax.vmap(prob_jacobian_fn)
+        probability_gradients = prob_jacobian_vectorized(theta_array).T
+
+    # Convert to score function gradients: ∇θ log π(x|θ) = (∇θ π(x|θ)) / π(x|θ)
+    score_function_gradients = probability_gradients / choice_probabilities
 
     logits = jnp.asarray(discrete_problem.logits_model.logits_function(theta_array))
     function_values = jnp.asarray(discrete_problem.compute_function_values(theta_array))

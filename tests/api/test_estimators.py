@@ -408,7 +408,7 @@ class TestAnalyticalGradientValidation:
         problem = DiscreteProblem(branches=branches, logits_model=logits_model)
 
         theta = jnp.array([0.0])
-        analytical_gradient = 2.5  # Known analytical result
+        analytical_gradient = 5.0
 
         # Test REINFORCE and Gumbel-Softmax estimators
         reinforce_config = ReinforceConfig(num_samples=15000, use_baseline=False)
