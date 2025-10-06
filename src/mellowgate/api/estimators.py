@@ -497,7 +497,7 @@ class GumbelSoftmaxConfig:
 
 def _gumbel_softmax_gradient_vectorized(
     log_probabilities: jnp.ndarray,
-    score_function_gradients: jnp.ndarray,
+    probability_gradients: jnp.ndarray,
     function_values: jnp.ndarray,
     pathwise_gradients: jnp.ndarray,
     gumbel_noise: jnp.ndarray,
@@ -505,12 +505,18 @@ def _gumbel_softmax_gradient_vectorized(
     temperature: float,
     use_straight_through_estimator: bool,
 ) -> jnp.ndarray:
-    """Vectorized Gumbel-Softmax gradient computation with JIT compilation.
+    """Vectorized Gumbel-Softmax gradient computation using proper reparameterization.
+
+    This implements the correct Gumbel-Softmax reparameterization gradient:
+    ∇θ E[f(y)] = E[f(y) * ∇θ y] + E[∇θ f(y)]
+
+    Where ∇θ y is computed using the softmax Jacobian:
+    ∂y_i/∂π_j = (1/τ) * y_i * (δ_ij - y_j)
 
     Performance optimizations:
     - Vectorized operations across theta and sample dimensions
     - Single batched softmax computation across all samples and theta values
-    - Vectorized matrix operations for efficient computation
+    - Vectorized softmax Jacobian computation
     - JIT compilation fuses operations and reduces overhead
 
     Args:
@@ -531,7 +537,7 @@ def _gumbel_softmax_gradient_vectorized(
     # Handle single theta case by reshaping for consistent processing
     if log_probabilities.ndim == 1:
         log_probabilities = log_probabilities[:, jnp.newaxis]
-        score_function_gradients = score_function_gradients[:, jnp.newaxis]
+        probability_gradients = probability_gradients[:, jnp.newaxis]
         function_values = function_values[:, jnp.newaxis]
         pathwise_gradients = pathwise_gradients[:, jnp.newaxis]
         gumbel_noise = gumbel_noise[jnp.newaxis, :, :]
@@ -575,31 +581,59 @@ def _gumbel_softmax_gradient_vectorized(
             continuous_weights * pathwise_gradients_expanded, axis=2
         )  # Shape: (num_theta, num_samples)
 
-    # Vectorized reparameterization gradient computation
-    score_function_gradients_expanded = score_function_gradients.T[
+    # Compute reparameterization gradient using softmax Jacobian
+    # The Gumbel-Softmax reparameterization gradient is:
+    # ∇θ E[f(y)] = E[∇θ (f(y) ∘ softmax((log π + G)/τ))]
+    # where ∇θ y_i = (1/τ) * y_i * (∇θ log π_i - Σ_j y_j * ∇θ log π_j)
+
+    # We need to work with log probability gradients for numerical stability
+    # First, get the original probabilities from log_probabilities
+    original_probabilities = jnp.exp(
+        log_probabilities
+    )  # Shape: (num_branches, num_theta)
+
+    # ∇θ log π = (∇θ π) / π
+    log_prob_gradients = probability_gradients / original_probabilities
+
+    # Expand for vectorized computation with proper shape handling
+    log_prob_gradients_expanded = log_prob_gradients.T[
         :, jnp.newaxis, :
     ]  # Shape: (num_theta, 1, num_branches)
 
-    # Compute mean score function gradient efficiently
-    mean_score_function_gradient = jnp.sum(
-        continuous_weights * score_function_gradients_expanded, axis=2
-    )  # Shape: (num_theta, num_samples)
+    # Ensure proper broadcasting by taking only the scalar gradient values
+    # For the case where probability_gradients has extra dimensions
+    if log_prob_gradients_expanded.ndim > 3:
+        # Take the diagonal elements for scalar parameter gradients
+        log_prob_gradients_expanded = jnp.diagonal(
+            log_prob_gradients_expanded, axis1=-2, axis2=-1
+        )[..., jnp.newaxis, :]
 
-    # Vectorized score function gradient computation
-    mean_score_function_gradient_expanded = mean_score_function_gradient[
-        :, :, jnp.newaxis
-    ]  # Shape: (num_theta, num_samples, 1)
-    score_function_gradient = (
-        continuous_weights
-        * (score_function_gradients_expanded - mean_score_function_gradient_expanded)
-    ) / temperature
+    # Compute softmax Jacobian vector product for log probabilities
+    # ∇θ y_i = (1/τ) * y_i * (∇θ log π_i - Σ_j y_j * ∇θ log π_j)
 
-    # Vectorized function value integration
+    # First term: y_i * (∇θ log π_i)
+    diagonal_term = continuous_weights * log_prob_gradients_expanded
+    # Shape: (num_theta, num_samples, num_branches)
+
+    # Second term: y_i * Σ_j y_j * (∇θ log π_j)
+    weighted_sum = jnp.sum(
+        continuous_weights * log_prob_gradients_expanded, axis=2, keepdims=True
+    )  # Shape: (num_theta, num_samples, 1)
+
+    off_diagonal_term = continuous_weights * weighted_sum
+    # Shape: (num_theta, num_samples, num_branches)
+
+    # Combine terms and apply temperature scaling
+    reparameterization_gradients = (diagonal_term - off_diagonal_term) / temperature
+    # Shape: (num_theta, num_samples, num_branches)
+
+    # Vectorized function value integration for reparameterization term
     function_values_expanded = function_values.T[
         :, jnp.newaxis, :
     ]  # Shape: (num_theta, 1, num_branches)
+
     reparameterization_contribution = jnp.sum(
-        function_values_expanded * score_function_gradient, axis=2
+        function_values_expanded * reparameterization_gradients, axis=2
     )  # Shape: (num_theta, num_samples)
 
     # Combine contributions and compute final gradients
@@ -676,9 +710,6 @@ def gumbel_softmax_gradient(
         # Reshape to (num_branches, num_theta) regardless of trailing dimensions
         probability_gradients = jacobian_result.reshape(theta_array.shape[0], -1).T
 
-    # score function gradients: ∇θ log π(x|θ) = (∇θ π(x|θ)) / π(x|θ)
-    score_function_gradients = probability_gradients / choice_probabilities
-
     # Use log probabilities for proper Gumbel-Max sampling (general case)
     log_probabilities = jnp.log(
         choice_probabilities
@@ -710,16 +741,14 @@ def gumbel_softmax_gradient(
     # Use optimized vectorized gradient computation
     gradient_estimates = _gumbel_softmax_gradient_vectorized(
         log_probabilities,
-        score_function_gradients,
+        probability_gradients,
         function_values,
         pathwise_gradients,
         gumbel_noise,
         config.num_samples,
         config.temperature,
         config.use_straight_through_estimator,
-    )
-
-    # Check for NaN values and handle them robustly
+    )  # Check for NaN values and handle them robustly
     nan_mask = jnp.isnan(gradient_estimates)
     if jnp.any(nan_mask):
         nan_count = jnp.sum(nan_mask)

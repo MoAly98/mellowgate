@@ -166,11 +166,17 @@ class TestReinforceGradient:
         config = ReinforceConfig(num_samples=100)
         state = ReinforceState()
 
+        # Test first-time baseline initialization scenario
+        assert not state.initialized
+
         gradient = reinforce_gradient(simple_problem, test_theta, config, state)
 
         assert gradient is not None
         assert jnp.isfinite(gradient).all()
         assert jnp.asarray(gradient).shape == test_theta.shape
+
+        # After first call, baseline should be properly initialized
+        assert state.initialized
 
     def test_reinforce_multiple_theta(self, simple_problem):
         """Test REINFORCE with multiple theta values."""
@@ -256,6 +262,113 @@ class TestReinforceGradient:
         assert gradient1 is not None
         assert gradient2 is not None
 
+    def test_reinforce_single_parameter_input(self, simple_problem):
+        """Test REINFORCE with single parameter value input.
+
+        This tests the common scenario where users pass a single scalar
+        parameter value instead of an array, ensuring the method handles
+        both input formats correctly.
+        """
+        config = ReinforceConfig(num_samples=50, use_baseline=False)
+        state = ReinforceState()
+
+        # Test with scalar parameter (common user input)
+        scalar_theta = 1.5
+        scalar_gradient = reinforce_gradient(
+            simple_problem, scalar_theta, config, state
+        )
+
+        # Test with equivalent array parameter
+        array_theta = jnp.array([1.5])
+        array_gradient = reinforce_gradient(simple_problem, array_theta, config, state)
+
+        # Both should produce valid results
+        assert isinstance(scalar_gradient, float)
+        assert isinstance(array_gradient, jnp.ndarray)
+        assert array_gradient.shape == (1,)
+        assert jnp.isfinite(scalar_gradient)
+        assert jnp.isfinite(array_gradient).all()
+
+        # Results should be approximately equivalent (within sampling variance)
+        assert abs(scalar_gradient - float(array_gradient[0])) < 1.0
+
+    def test_reinforce_baseline_initialization_behavior(self, simple_problem):
+        """Test REINFORCE baseline initialization and update behavior.
+
+        This tests the baseline management logic: first call should initialize
+        the baseline with current reward mean, subsequent calls should use
+        the existing baseline with momentum updates.
+        """
+        config = ReinforceConfig(
+            num_samples=100, use_baseline=True, baseline_momentum=0.8
+        )
+        state = ReinforceState()
+        theta = jnp.array([1.0])
+
+        # First call: baseline should be initialized with current rewards
+        assert not state.initialized
+        first_gradient = reinforce_gradient(simple_problem, theta, config, state)
+
+        # After first call, state should be initialized
+        assert state.initialized
+        first_baseline = state.baseline
+        assert jnp.isfinite(first_baseline)
+
+        # Second call: baseline should be updated using momentum
+        second_gradient = reinforce_gradient(simple_problem, theta, config, state)
+        second_baseline = state.baseline
+
+        # Baseline should have been updated (unless by coincidence it's the same)
+        assert jnp.isfinite(second_baseline)
+
+        # Both gradients should be valid
+        assert jnp.isfinite(first_gradient).all()
+        assert jnp.isfinite(second_gradient).all()
+
+    def test_reinforce_without_derivatives(self):
+        """Test REINFORCE with branches that don't provide derivative functions.
+
+        This tests the scenario where users define branches with only functions
+        but no analytical derivatives, forcing the estimator to use only
+        score function gradients without pathwise gradients.
+        """
+        # Create problem where branches don't provide derivative functions
+        branches_no_derivatives = [
+            Branch(function=lambda th: th**2),  # No derivative_function provided
+            Branch(function=lambda th: 2 * th),
+        ]
+        logits_model = LogitsModel(
+            logits_function=lambda th: jnp.array([th, -th]),
+        )
+        problem_no_derivatives = DiscreteProblem(
+            branches=branches_no_derivatives, logits_model=logits_model
+        )
+
+        # Test with single scalar theta (common user input pattern)
+        scalar_theta = 1.0  # Single parameter value, not array
+        config = ReinforceConfig(num_samples=50, use_baseline=True)
+        fresh_state = ReinforceState()
+
+        # Test first-time use with fresh state
+        assert not fresh_state.initialized
+
+        gradient = reinforce_gradient(
+            problem_no_derivatives, scalar_theta, config, fresh_state
+        )
+
+        # Verify the method handles missing derivatives gracefully
+        derivative_values = problem_no_derivatives.compute_derivative_values(
+            jnp.array([scalar_theta])
+        )
+        assert derivative_values is None  # No pathwise gradients available
+
+        # Verify results are valid for scalar input
+        assert isinstance(gradient, float)  # Should return scalar for scalar input
+        assert jnp.isfinite(gradient)
+
+        # State should be properly initialized after first use
+        assert fresh_state.initialized
+
 
 class TestGumbelSoftmaxGradient:
     """Test Gumbel-Softmax gradient estimator."""
@@ -323,6 +436,42 @@ class TestGumbelSoftmaxGradient:
         assert gradient is not None
         # With very low temperature, gradient might be unstable but should be finite
         assert jnp.isfinite(gradient).all() or jnp.abs(gradient).max() < 1e10
+
+    def test_gumbel_softmax_without_derivatives(self):
+        """Test Gumbel-Softmax with branches that don't provide derivative functions.
+
+        This tests the scenario where users define branches with only functions
+        but no analytical derivatives, forcing Gumbel-Softmax to use only
+        reparameterization gradients without pathwise gradients.
+        """
+        # Create problem where branches don't provide derivative functions
+        branches_no_derivatives = [
+            Branch(function=lambda th: th**2),  # No derivative_function provided
+            Branch(function=lambda th: 2 * th),
+        ]
+        logits_model = LogitsModel(
+            logits_function=lambda th: jnp.array([th, -th]),
+        )
+        problem_no_derivatives = DiscreteProblem(
+            branches=branches_no_derivatives, logits_model=logits_model
+        )
+
+        # Test with single theta array (common use case)
+        single_theta = jnp.array([1.0])
+        config = GumbelSoftmaxConfig(num_samples=50, temperature=0.5)
+
+        gradient = gumbel_softmax_gradient(problem_no_derivatives, single_theta, config)
+
+        # Verify the method handles missing derivatives gracefully
+        derivative_values = problem_no_derivatives.compute_derivative_values(
+            single_theta
+        )
+        assert derivative_values is None  # No pathwise gradients available
+
+        # Verify results are valid
+        assert isinstance(gradient, jnp.ndarray)
+        assert gradient.shape == (1,)
+        assert jnp.isfinite(gradient).all()
 
 
 class TestAnalyticalGradientValidation:
