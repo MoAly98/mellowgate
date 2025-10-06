@@ -372,12 +372,6 @@ def reinforce_gradient(
         # Create zeros with proper shape for vectorized computation
         pathwise_gradients = jnp.zeros_like(function_values)
 
-    # Check that we have the required gradient information for score function
-    if discrete_problem.logits_model.logits_derivative_function is None:
-        raise ValueError(
-            "REINFORCE requires logits_derivative_function for score function."
-        )
-
     # Compute score function gradients correctly using JAX autodiff
     # ∇θ log π(x|θ) = (1/π(x|θ)) * ∇θ π(x|θ)
     # where ∇θ π(x|θ) is computed using chain rule through logits
@@ -503,12 +497,11 @@ class GumbelSoftmaxConfig:
 
 def _gumbel_softmax_gradient_vectorized(
     log_probabilities: jnp.ndarray,
-    probability_gradients: jnp.ndarray,
+    score_function_gradients: jnp.ndarray,
     function_values: jnp.ndarray,
     pathwise_gradients: jnp.ndarray,
     gumbel_noise: jnp.ndarray,
     num_samples: int,
-    num_branches: int,
     temperature: float,
     use_straight_through_estimator: bool,
 ) -> jnp.ndarray:
@@ -527,7 +520,6 @@ def _gumbel_softmax_gradient_vectorized(
         pathwise_gradients: Shape (num_branches, num_theta) or zeros
         gumbel_noise: Shape (num_theta, num_samples, num_branches)
         num_samples: Number of samples per theta
-        num_branches: Number of branches
         temperature: Temperature parameter
         use_straight_through_estimator: Whether to use STE
 
@@ -539,7 +531,7 @@ def _gumbel_softmax_gradient_vectorized(
     # Handle single theta case by reshaping for consistent processing
     if log_probabilities.ndim == 1:
         log_probabilities = log_probabilities[:, jnp.newaxis]
-        probability_gradients = probability_gradients[:, jnp.newaxis]
+        score_function_gradients = score_function_gradients[:, jnp.newaxis]
         function_values = function_values[:, jnp.newaxis]
         pathwise_gradients = pathwise_gradients[:, jnp.newaxis]
         gumbel_noise = gumbel_noise[jnp.newaxis, :, :]
@@ -584,22 +576,22 @@ def _gumbel_softmax_gradient_vectorized(
         )  # Shape: (num_theta, num_samples)
 
     # Vectorized reparameterization gradient computation
-    probability_gradients_expanded = probability_gradients.T[
+    score_function_gradients_expanded = score_function_gradients.T[
         :, jnp.newaxis, :
     ]  # Shape: (num_theta, 1, num_branches)
 
-    # Compute mean probability gradient efficiently
-    mean_probability_gradient = jnp.sum(
-        continuous_weights * probability_gradients_expanded, axis=2
+    # Compute mean score function gradient efficiently
+    mean_score_function_gradient = jnp.sum(
+        continuous_weights * score_function_gradients_expanded, axis=2
     )  # Shape: (num_theta, num_samples)
 
     # Vectorized score function gradient computation
-    mean_probability_gradient_expanded = mean_probability_gradient[
+    mean_score_function_gradient_expanded = mean_score_function_gradient[
         :, :, jnp.newaxis
     ]  # Shape: (num_theta, num_samples, 1)
     score_function_gradient = (
         continuous_weights
-        * (probability_gradients_expanded - mean_probability_gradient_expanded)
+        * (score_function_gradients_expanded - mean_score_function_gradient_expanded)
     ) / temperature
 
     # Vectorized function value integration
@@ -657,12 +649,6 @@ def gumbel_softmax_gradient(
     if is_scalar_input:
         theta_array = theta_array.reshape(1)
 
-    # Validate that we have the required gradient information
-    if discrete_problem.logits_model.logits_derivative_function is None:
-        raise ValueError(
-            "Gumbel-Softmax requires logits_derivative_function for backpropagation."
-        )
-
     # Compute score function gradients correctly using JAX autodiff for Gumbel-Softmax
     # ∇θ log π(x|θ) = (1/π(x|θ)) * ∇θ π(x|θ)
     def compute_probabilities_for_theta(theta_single):
@@ -690,7 +676,7 @@ def gumbel_softmax_gradient(
         # Reshape to (num_branches, num_theta) regardless of trailing dimensions
         probability_gradients = jacobian_result.reshape(theta_array.shape[0], -1).T
 
-    # Convert to score function gradients: ∇θ log π(x|θ) = (∇θ π(x|θ)) / π(x|θ)
+    # score function gradients: ∇θ log π(x|θ) = (∇θ π(x|θ)) / π(x|θ)
     score_function_gradients = probability_gradients / choice_probabilities
 
     # Use log probabilities for proper Gumbel-Max sampling (general case)
@@ -729,7 +715,6 @@ def gumbel_softmax_gradient(
         pathwise_gradients,
         gumbel_noise,
         config.num_samples,
-        discrete_problem.num_branches,
         config.temperature,
         config.use_straight_through_estimator,
     )

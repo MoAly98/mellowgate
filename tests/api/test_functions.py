@@ -27,9 +27,6 @@ def example_logits_model():
     """Example logits model for testing."""
     return LogitsModel(
         logits_function=lambda th: jnp.array([th, -th]),
-        logits_derivative_function=lambda th: jnp.array(
-            [jnp.ones_like(th), -jnp.ones_like(th)]
-        ),
     )
 
 
@@ -98,21 +95,6 @@ class TestLogitsModel:
 
         model = LogitsModel(logits_function=logits_func)
         assert model.logits_function is logits_func
-        assert model.logits_derivative_function is None
-
-    def test_logits_model_with_derivatives(self):
-        """Test creating a LogitsModel with derivatives."""
-
-        def logits_func(th):
-            return jnp.array([th, -th])
-
-        def deriv_func(th):
-            return jnp.array([jnp.ones_like(th), -jnp.ones_like(th)])
-
-        model = LogitsModel(
-            logits_function=logits_func, logits_derivative_function=deriv_func
-        )
-        assert model.logits_derivative_function is deriv_func
 
     def test_logits_model_with_custom_probability_function(self):
         """Test LogitsModel with custom probability function."""
@@ -195,24 +177,6 @@ class TestDiscreteProblem:
         assert gradient is not None
         assert jnp.asarray(gradient).shape == (5,)
         assert jnp.all(jnp.isfinite(gradient))
-
-    def test_compute_exact_gradient_missing_logits_derivatives(
-        self, simple_branches, example_logits_model
-    ):
-        """Test exact gradient computation when logits derivatives are missing."""
-        # Create model without logits derivatives
-        logits_model_no_deriv = LogitsModel(
-            logits_function=example_logits_model.logits_function
-        )
-        problem = DiscreteProblem(
-            branches=simple_branches, logits_model=logits_model_no_deriv
-        )
-
-        theta = jnp.array([1.0])
-
-        # Should return None when no logits derivatives available
-        gradient = problem.compute_exact_gradient(theta)
-        assert gradient is None
 
     def test_input_validation_errors(self, simple_branches, example_logits_model):
         """Test input validation in core methods."""
@@ -553,7 +517,6 @@ class TestEdgeCases:
         ]
         logits_model = LogitsModel(
             logits_function=lambda th: jnp.array([0.0]),
-            logits_derivative_function=lambda th: jnp.array([0.0]),
         )
         problem = DiscreteProblem(branches=branches, logits_model=logits_model)
 
@@ -720,9 +683,6 @@ class TestKnownAnalyticalResults:
             logits_function=lambda th: jnp.array(
                 [jnp.zeros_like(th), jnp.zeros_like(th)]
             ),
-            logits_derivative_function=lambda th: jnp.array(
-                [jnp.zeros_like(th), jnp.zeros_like(th)]
-            ),
         )
 
         problem = DiscreteProblem(branches=branches, logits_model=logits_model)
@@ -768,9 +728,6 @@ class TestKnownAnalyticalResults:
             logits_function=lambda th: jnp.array(
                 [jnp.zeros_like(th), jnp.log(3.0) * jnp.ones_like(th)]
             ),
-            logits_derivative_function=lambda th: jnp.array(
-                [jnp.zeros_like(th), jnp.zeros_like(th)]
-            ),
         )
 
         problem = DiscreteProblem(branches=branches, logits_model=logits_model)
@@ -815,9 +772,6 @@ class TestKnownAnalyticalResults:
         # Linear logits: α1(θ) = θ, α2(θ) = 0 → softmax gives sigmoid probabilities
         logits_model = LogitsModel(
             logits_function=lambda th: jnp.array([th, jnp.zeros_like(th)]),
-            logits_derivative_function=lambda th: jnp.array(
-                [jnp.ones_like(th), jnp.zeros_like(th)]
-            ),
         )
 
         problem = DiscreteProblem(branches=branches, logits_model=logits_model)
@@ -869,9 +823,6 @@ class TestKnownAnalyticalResults:
         # Symmetric logits: α1(θ) = θ, α2(θ) = -θ
         logits_model = LogitsModel(
             logits_function=lambda th: jnp.array([th, -th]),
-            logits_derivative_function=lambda th: jnp.array(
-                [jnp.ones_like(th), -jnp.ones_like(th)]
-            ),
             probability_function=sigmoid,
         )
 
@@ -929,9 +880,6 @@ class TestKnownAnalyticalResults:
         # Asymmetric logits: α1(θ) = 2θ, α2(θ) = -2θ → sigmoid probabilities
         logits_model = LogitsModel(
             logits_function=lambda th: jnp.array([2 * th, -2 * th]),
-            logits_derivative_function=lambda th: jnp.array(
-                [2 * jnp.ones_like(th), -2 * jnp.ones_like(th)]
-            ),
             probability_function=binary_sigmoid,
         )
 

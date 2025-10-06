@@ -23,9 +23,6 @@ def simple_problem():
     ]
     logits_model = LogitsModel(
         logits_function=lambda th: jnp.array([th, -th]),
-        logits_derivative_function=lambda th: jnp.array(
-            [jnp.ones_like(th), -jnp.ones_like(th)]
-        ),
     )
     return DiscreteProblem(branches=branches, logits_model=logits_model)
 
@@ -231,9 +228,8 @@ class TestRunParameterSweep:
             Branch(function=lambda th: th**3),
         ]
         logits_model = LogitsModel(
-            logits_function=lambda th: jnp.array([0.0, 1.0]),
-            logits_derivative_function=lambda th: jnp.array(
-                [0.0, 0.0]
+            logits_function=lambda th: jnp.array(
+                [0.0, 1.0]
             ),  # Add derivatives to avoid issues
         )
         problem = DiscreteProblem(branches=branches, logits_model=logits_model)

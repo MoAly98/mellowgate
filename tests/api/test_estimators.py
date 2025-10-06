@@ -25,9 +25,6 @@ def simple_problem():
     ]
     logits_model = LogitsModel(
         logits_function=lambda th: jnp.array([th, -th]),
-        logits_derivative_function=lambda th: jnp.array(
-            [jnp.ones_like(th), -jnp.ones_like(th)]
-        ),
     )
     return DiscreteProblem(branches=branches, logits_model=logits_model)
 
@@ -340,9 +337,6 @@ class TestAnalyticalGradientValidation:
         ]
         logits_model = LogitsModel(
             logits_function=lambda th: jnp.array([th, -th]),
-            logits_derivative_function=lambda th: jnp.array(
-                [jnp.ones_like(th), -jnp.ones_like(th)]
-            ),
         )
         problem = DiscreteProblem(branches=branches, logits_model=logits_model)
 
@@ -368,9 +362,6 @@ class TestAnalyticalGradientValidation:
         ]
         logits_model = LogitsModel(
             logits_function=lambda th: jnp.array([th, -th]),
-            logits_derivative_function=lambda th: jnp.array(
-                [jnp.ones_like(th), -jnp.ones_like(th)]
-            ),
         )
         problem = DiscreteProblem(branches=branches, logits_model=logits_model)
 
@@ -398,9 +389,6 @@ class TestAnalyticalGradientValidation:
         ]
         logits_model = LogitsModel(
             logits_function=lambda th: jnp.array([th, -th]),
-            logits_derivative_function=lambda th: jnp.array(
-                [jnp.ones_like(th), -jnp.ones_like(th)]
-            ),
         )
         problem = DiscreteProblem(branches=branches, logits_model=logits_model)
 
@@ -439,9 +427,6 @@ class TestAnalyticalGradientValidation:
         ]
         logits_model = LogitsModel(
             logits_function=lambda th: jnp.array([10 * th, -10 * th]),
-            logits_derivative_function=lambda th: jnp.array(
-                [10 * jnp.ones_like(th), -10 * jnp.ones_like(th)]
-            ),
         )
         problem = DiscreteProblem(branches=branches, logits_model=logits_model)
 
@@ -507,9 +492,6 @@ class TestAnalyticalGradientValidation:
         ]
         logits_model = LogitsModel(
             logits_function=lambda th: jnp.array([5 * th, -5 * th]),
-            logits_derivative_function=lambda th: jnp.array(
-                [5 * jnp.ones_like(th), -5 * jnp.ones_like(th)]
-            ),
             probability_function=sigmoid_probability_function,
         )
         problem = DiscreteProblem(branches=branches, logits_model=logits_model)
@@ -562,9 +544,6 @@ class TestAnalyticalGradientValidation:
         ]
         logits_model = LogitsModel(
             logits_function=lambda th: jnp.array([th, -th]),
-            logits_derivative_function=lambda th: jnp.array(
-                [jnp.ones_like(th), -jnp.ones_like(th)]
-            ),
         )
         problem = DiscreteProblem(branches=branches, logits_model=logits_model)
 
@@ -662,7 +641,6 @@ class TestEdgeCases:
         ]
         logits_model = LogitsModel(
             logits_function=lambda th: jnp.array([0.0]),
-            logits_derivative_function=lambda th: jnp.array([0.0]),
         )
         problem = DiscreteProblem(branches=branches, logits_model=logits_model)
 
@@ -761,94 +739,3 @@ class TestEdgeCases:
         )
         assert isinstance(stoch_vals, jnp.ndarray)
         assert stoch_vals.shape == (0, 10)
-
-    def test_estimator_missing_requirements(self):
-        """Test estimators when required derivatives are missing."""
-        # Create simple branches
-        branches = [
-            Branch(function=lambda th: th**2, derivative_function=lambda th: 2 * th),
-            Branch(function=lambda th: th**3, derivative_function=lambda th: 3 * th**2),
-        ]
-
-        # Create logits model without derivatives
-        logits_model_no_deriv = LogitsModel(
-            logits_function=lambda th: jnp.array([0.0, 1.0])
-        )
-        problem = DiscreteProblem(branches=branches, logits_model=logits_model_no_deriv)
-
-        theta = jnp.array([1.0])
-
-        # REINFORCE should raise error when logits derivatives missing
-        reinforce_config = ReinforceConfig(num_samples=50)
-        reinforce_state = ReinforceState()
-        with pytest.raises(
-            ValueError, match="REINFORCE requires logits_derivative_function"
-        ):
-            reinforce_gradient(problem, theta, reinforce_config, reinforce_state)
-
-        # Test when branch derivatives are missing
-        branches_no_deriv = [
-            Branch(function=lambda th: th**2),  # No derivative function
-            Branch(function=lambda th: 2 * th),  # No derivative function
-        ]
-        logits_model_with_deriv = LogitsModel(
-            logits_function=lambda th: jnp.array([jnp.zeros_like(th), th]).flatten(),
-            logits_derivative_function=lambda th: jnp.array(
-                [jnp.zeros_like(th), jnp.ones_like(th)]
-            ).flatten(),
-        )
-        problem_no_branch_deriv = DiscreteProblem(
-            branches=branches_no_deriv, logits_model=logits_model_with_deriv
-        )
-
-        # Use larger sample size for more accurate estimation and disable baseline
-        simple_config = ReinforceConfig(num_samples=50000, use_baseline=False)
-        fresh_reinforce_state = ReinforceState()
-        gradient_no_deriv = reinforce_gradient(
-            problem_no_branch_deriv, theta, simple_config, fresh_reinforce_state
-        )
-
-        assert jnp.isfinite(gradient_no_deriv).all()
-
-        # Convert to scalar for validation
-        gradient_array = jnp.asarray(gradient_no_deriv)
-        if jnp.isscalar(gradient_no_deriv) or gradient_array.size == 1:
-            gradient_scalar = float(gradient_array.item())
-        else:
-            gradient_scalar = float(gradient_array.flatten()[0])
-
-        # Test mathematical correctness of the REINFORCE score function gradient:
-        # With logits=[0,θ] at θ=1, f₁=1, f₂=2, the second branch has higher reward
-        # and higher probability due to positive logits, so gradient should be positive
-        assert gradient_scalar > 0, (
-            f"REINFORCE gradient {gradient_scalar:.6f} should be positive: "
-            f"higher-reward branch is favored by positive logits derivative"
-        )
-
-        # Should be finite and non-trivial
-        assert jnp.isfinite(
-            gradient_scalar
-        ), f"Gradient should be finite, got {gradient_scalar}"
-        assert (
-            abs(gradient_scalar) > 0.01
-        ), f"Gradient {gradient_scalar:.6f} should be non-trivial"
-
-        # Should be in reasonable range for this problem setup
-        assert (
-            gradient_scalar < 5.0
-        ), f"Gradient {gradient_scalar:.6f} should be reasonable magnitude"
-
-        # Verify this is actually testing the missing derivatives path
-        # by checking that exact gradient computation would return None
-        exact_gradient = problem_no_branch_deriv.compute_exact_gradient(theta)
-        assert exact_gradient is None, (
-            "This test should be hitting the missing derivatives case "
-            "where exact gradient is unavailable"
-        )
-
-        # Gumbel-Softmax should also raise error when logits derivatives missing
-        gs_config = GumbelSoftmaxConfig(num_samples=50)
-        with pytest.raises(
-            ValueError, match="Gumbel-Softmax requires logits_derivative_function"
-        ):
-            gumbel_softmax_gradient(problem, theta, gs_config)

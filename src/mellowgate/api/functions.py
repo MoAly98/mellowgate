@@ -88,13 +88,13 @@ class LogitsModel:
 
     The logits model computes probability distributions over branches using
     vectorized operations. Supports both single theta and arrays of theta values.
+    Gradient computation is handled automatically through JAX's automatic
+    differentiation system.
 
     Attributes:
         logits_function: A callable that takes theta array and returns logits.
                         For single theta: returns shape (num_branches,).
                         For multiple theta: returns shape (num_branches, num_theta).
-        logits_derivative_function: Optional callable for logits derivatives.
-                                   Same shape behavior as logits_function.
         probability_function: Optional callable to compute probabilities from logits.
                               Defaults to vectorized softmax with appropriate axis.
 
@@ -102,17 +102,13 @@ class LogitsModel:
         >>> import jax.numpy as jnp
         >>> # Vectorized logits model
         >>> logits_model = LogitsModel(
-        ...     logits_function=lambda theta: jnp.array([theta, -theta]),
-        ...     logits_derivative_function=lambda theta: jnp.array([
-        ...         jnp.ones_like(theta), -jnp.ones_like(theta)
-        ...     ])
+        ...     logits_function=lambda theta: jnp.array([theta, -theta])
         ... )
     """
 
     logits_function: Callable[
         [jnp.ndarray], jnp.ndarray
     ]  # returns shape (K,) or (K, N)
-    logits_derivative_function: Optional[Callable[[jnp.ndarray], jnp.ndarray]] = None
     probability_function: Callable[[jnp.ndarray], jnp.ndarray] = (
         _default_probability_function
     )
@@ -474,10 +470,11 @@ class DiscreteProblem:
         using vectorized operations.
 
         This method computes the exact gradient using the policy gradient theorem
-        and requires both logits derivatives and function derivatives to be
-        available.
-        All computations are vectorized for efficiency with arrays of theta values.
-        Supports both scalar and array inputs for maximum flexibility.
+        and requires function derivatives to be available. Probability derivatives
+        are computed automatically using JAX's automatic differentiation through
+        the logits function. All computations are vectorized for efficiency with
+        arrays of theta values. Supports both scalar and array inputs for maximum
+        flexibility.
 
         Args:
             theta: The parameter value(s) at which to evaluate the gradient.
@@ -487,15 +484,16 @@ class DiscreteProblem:
             Union[float, jnp.ndarray]: Exact gradient values.
                                      Returns scalar for scalar input,
                                      array for array input.
-                                     Returns None if any required derivative is missing.
+                                     Returns None if function derivatives are missing.
 
         Formula:
             dE/dtheta = sum_k [p_k * df_k/dtheta + f_k * dp_k/dtheta]
-            where dp_k/dtheta is computed using the chain rule through logits.
+            where dp_k/dtheta is computed using JAX autodiff through logits.
 
         Notes:
             Uses the policy gradient theorem for discrete distributions.
-            Requires both function derivatives and logits derivatives.
+            Requires function derivatives to be available.
+            Probability derivatives computed automatically via JAX.
             All operations are vectorized for computational efficiency.
 
         Examples:
@@ -513,10 +511,6 @@ class DiscreteProblem:
 
         if is_scalar_input:
             theta_array = theta_array.reshape(1)
-
-        # Check if logits derivatives are available
-        if self.logits_model.logits_derivative_function is None:
-            return None
 
         # Check if function derivatives are available
         function_derivatives = self.compute_derivative_values(theta_array)
