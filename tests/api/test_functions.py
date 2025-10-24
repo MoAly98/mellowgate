@@ -1,10 +1,10 @@
-"""Tests for mellowgate.api.functions module."""
+"""Tests for mellowgate.functions module."""
 
 import jax
 import jax.numpy as jnp
 import pytest
 
-from mellowgate.api.functions import Bound, Branch, DiscreteProblem, LogitsModel
+from mellowgate.core import Bound, Branch, DiscreteProblem, LogitsModel
 
 
 @pytest.fixture

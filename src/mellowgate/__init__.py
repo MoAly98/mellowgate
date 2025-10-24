@@ -7,7 +7,8 @@ REINFORCE, and Gumbel-Softmax.
 
 # Configure JAX for float64 precision (must be done before other imports)
 from . import config
-from .api.estimators import (
+from .core import Branch, DiscreteProblem, LogitsModel
+from .estimators import (
     FiniteDifferenceConfig,
     GumbelSoftmaxConfig,
     ReinforceConfig,
@@ -16,8 +17,7 @@ from .api.estimators import (
     gumbel_softmax_gradient,
     reinforce_gradient,
 )
-from .api.experiments import Sweep, run_parameter_sweep
-from .api.functions import Branch, DiscreteProblem, LogitsModel
+from .experiments import Sweep, run_parameter_sweep
 from .plots.metrics import (
     plot_bias_variance_mse_analysis,
     plot_computational_time_analysis,

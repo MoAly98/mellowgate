@@ -1,1 +1,1 @@
-"""Tests for mellowgate.api module."""
+"""Tests for mellowgate core API module."""

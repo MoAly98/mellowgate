@@ -1,10 +1,11 @@
-"""Tests for mellowgate.api.estimators module."""
+"""Tests for mellowgate.estimators module."""
 
 import jax
 import jax.numpy as jnp
 import pytest
 
-from mellowgate.api.estimators import (
+from mellowgate.core import Branch, DiscreteProblem, LogitsModel
+from mellowgate.estimators import (
     FiniteDifferenceConfig,
     GumbelSoftmaxConfig,
     ReinforceConfig,
@@ -13,7 +14,6 @@ from mellowgate.api.estimators import (
     gumbel_softmax_gradient,
     reinforce_gradient,
 )
-from mellowgate.api.functions import Branch, DiscreteProblem, LogitsModel
 
 
 @pytest.fixture

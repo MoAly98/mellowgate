@@ -6,14 +6,14 @@ from io import StringIO
 import jax
 import jax.numpy as jnp
 
-from mellowgate.api.estimators import (
+from mellowgate.core import Bound, Branch, DiscreteProblem, LogitsModel
+from mellowgate.estimators import (
     FiniteDifferenceConfig,
     GumbelSoftmaxConfig,
     ReinforceConfig,
     ReinforceState,
 )
-from mellowgate.api.experiments import Sweep, run_parameter_sweep
-from mellowgate.api.functions import Bound, Branch, DiscreteProblem, LogitsModel
+from mellowgate.experiments import Sweep, run_parameter_sweep
 
 # from mellowgate.plots.functions import plot_combined_overlay
 from mellowgate.plots.metrics import (

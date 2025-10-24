@@ -1,18 +1,4 @@
-"""Core mathematical functions and problem definitions for discrete optimization.
-
-This module provides the fundamental building blocks for defining and solving
-discrete optimization problems where decisions involve choosing between multiple
-branches or paths. The module implements vectorized operations throughout to
-efficiently handle both single parameter values and arrays of parameters.
-
-The main components are:
-- Branch: Represents a single choice/path with its associated function
-- LogitsModel: Defines probability distributions over branches using logits
-- DiscreteProblem: Complete problem formulation with sampling and gradient computation
-
-All operations support NumPy array broadcasting and are optimized for performance
-with large parameter spaces.
-"""
+"""Complete discrete optimization problem definition."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -21,96 +7,8 @@ import jax
 import jax.numpy as jnp
 from sigmatch import SignatureMatcher, SignatureMismatchError
 
-from mellowgate.utils.functions import softmax
-
-
-def _default_probability_function(logits: jnp.ndarray) -> jnp.ndarray:
-    """Default probability function that applies softmax along branch dimension."""
-    if logits.ndim == 1:
-        return softmax(logits)
-    # For 2D logits (num_branches, num_theta), apply softmax along branch
-    # dimension (axis=0)
-    return softmax(logits, axis=0)
-
-
-@dataclass
-class Bound:
-    """Represents a bound (lower or upper) for a parameter.
-
-    Attributes:
-        value: The numerical value of the bound.
-        inclusive: Whether the bound is inclusive (True) or exclusive (False).
-    """
-
-    value: float
-    inclusive: bool = True
-
-
-@dataclass
-class Branch:
-    """Represents a single branch in a discrete optimization problem.
-
-    A branch consists of a function and optionally its derivative, representing
-    one possible choice or path in the discrete decision space. Functions are
-    vectorized to handle arrays of theta values efficiently.
-
-    Attributes:
-        function: A callable that takes a theta array and returns function values.
-                  For single theta: returns scalar or 1D array.
-                  For multiple theta: returns array with shape matching theta.
-        derivative_function: Optional callable that returns the derivative of the
-                           function with respect to theta. Required for exact
-                           gradient computation. Same shape behavior as function.
-        threshold: Optional tuple defining the range of theta values where this
-                   branch is active. Each element in the tuple can be None:
-                   - (None, upper): No lower threshold, active for theta < upper.
-                   - (lower, None): No upper threshold, active for theta >= lower.
-                   - (None, None): Always active.
-
-    Examples:
-        >>> import jax.numpy as jnp
-        >>> # Vectorized branch with trigonometric function
-        >>> cos_branch = Branch(
-        ...     function=lambda theta: jnp.cos(theta),
-        ...     derivative_function=lambda theta: -jnp.sin(theta)
-        ... )
-    """
-
-    function: Callable[[jnp.ndarray], jnp.ndarray]
-    derivative_function: Callable[[jnp.ndarray], jnp.ndarray] | None = None
-    threshold: tuple[Bound | None, Bound | None] | None = (None, None)
-
-
-@dataclass
-class LogitsModel:
-    """Represents the logits model for discrete probability distributions.
-
-    The logits model computes probability distributions over branches using
-    vectorized operations. Supports both single theta and arrays of theta values.
-    Gradient computation is handled automatically through JAX's automatic
-    differentiation system.
-
-    Attributes:
-        logits_function: A callable that takes theta array and returns logits.
-                        For single theta: returns shape (num_branches,).
-                        For multiple theta: returns shape (num_branches, num_theta).
-        probability_function: Optional callable to compute probabilities from logits.
-                              Defaults to vectorized softmax with appropriate axis.
-
-    Examples:
-        >>> import jax.numpy as jnp
-        >>> # Vectorized logits model
-        >>> logits_model = LogitsModel(
-        ...     logits_function=lambda theta: jnp.array([theta, -theta])
-        ... )
-    """
-
-    logits_function: Callable[
-        [jnp.ndarray], jnp.ndarray
-    ]  # returns shape (K,) or (K, N)
-    probability_function: Callable[[jnp.ndarray], jnp.ndarray] = (
-        _default_probability_function
-    )
+from .branch import Bound, Branch
+from .logits import LogitsModel
 
 
 @dataclass
@@ -212,7 +110,7 @@ class DiscreteProblem:
                 raise ValueError(msg)
 
         except Exception as e:
-            if isinstance(e, (TypeError, ValueError)):  # noqa: UP038
+            if isinstance(e, (TypeError | ValueError)):
                 raise
             msg = (
                 f"Sampling function failed validation test: {e!s}\n"

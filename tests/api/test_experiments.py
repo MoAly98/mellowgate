@@ -1,17 +1,17 @@
-"""Tests for mellowgate.api.experiments module."""
+"""Tests for mellowgate.experiments module."""
 
 import jax.numpy as jnp
 import pytest
 
-from mellowgate.api.estimators import (
+from mellowgate.core import Branch, DiscreteProblem, LogitsModel
+from mellowgate.estimators import (
     FiniteDifferenceConfig,
     GumbelSoftmaxConfig,
     ReinforceConfig,
     ReinforceState,
 )
-from mellowgate.api.experiments import Sweep, run_parameter_sweep
-from mellowgate.api.functions import Branch, DiscreteProblem, LogitsModel
-from mellowgate.api.results import ResultsContainer
+from mellowgate.experiments import Sweep, run_parameter_sweep
+from mellowgate.results import ResultsContainer
 
 
 @pytest.fixture
@@ -460,7 +460,7 @@ class TestPerformanceAndScaling:
         assert jnp.isnan(fd_results.gradient_estimates["fd"]["std"]).all()
 
         # Also test the internal function directly to ensure coverage
-        from mellowgate.api.experiments import (
+        from mellowgate.experiments import (
             _compute_sweep_statistics,  # noqa: PLC2701
         )
 

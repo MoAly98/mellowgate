@@ -14,8 +14,8 @@ from collections.abc import Callable
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
-from mellowgate.api.results import ResultsContainer
 from mellowgate.logging import logger
+from mellowgate.results import ResultsContainer
 from mellowgate.utils.outputs import OutputManager
 
 

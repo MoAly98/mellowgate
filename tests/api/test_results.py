@@ -1,8 +1,8 @@
-"""Tests for mellowgate.api.results module."""
+"""Tests for mellowgate.results module."""
 
 import jax.numpy as jnp
 
-from mellowgate.api.results import ResultsContainer
+from mellowgate.results import ResultsContainer
 
 
 class TestResultsContainer:

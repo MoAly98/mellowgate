@@ -5,14 +5,14 @@ import matplotlib.pyplot as plt
 from cycler import cycler
 
 # Import mellowgate components
-from mellowgate.api.estimators import (
+from mellowgate.core import Branch, DiscreteProblem, LogitsModel
+from mellowgate.estimators import (
     GumbelSoftmaxConfig,
     ReinforceConfig,
     ReinforceState,
     gumbel_softmax_gradient,
     reinforce_gradient,
 )
-from mellowgate.api.functions import Branch, DiscreteProblem, LogitsModel
 from mellowgate.utils.outputs import OutputManager
 
 # Initialize output manager
@@ -110,9 +110,6 @@ temp = 0.1
 logits_model = LogitsModel(
     logits_function=lambda th: jnp.array(
         [(th - threshold) / temp, -(th - threshold) / temp]
-    ),
-    logits_derivative_function=lambda th: jnp.array(
-        [jnp.ones_like(th) / temp, -jnp.ones_like(th) / temp]
     ),
     probability_function=lambda logits: 1.0 / (1 + jnp.exp(-logits)),
 )

@@ -20,15 +20,15 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 
-from mellowgate.api.estimators import (
+from mellowgate.core import DiscreteProblem
+from mellowgate.estimators import (
     ReinforceState,
     finite_difference_gradient,
     gumbel_softmax_gradient,
     reinforce_gradient,
 )
-from mellowgate.api.functions import DiscreteProblem
-from mellowgate.api.results import ResultsContainer
 from mellowgate.logging import logger
+from mellowgate.results import ResultsContainer
 
 ArrayType = jnp.ndarray
 
@@ -52,7 +52,7 @@ class Sweep:
 
     Examples:
         >>> import jax.numpy as jnp
-        >>> from mellowgate.api.estimators import FiniteDifferenceConfig
+        >>> from mellowgate.estimators import FiniteDifferenceConfig
         >>>
         >>> sweep = Sweep(
         ...     theta_values=jnp.linspace(-2, 2, 10),
