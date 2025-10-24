@@ -608,12 +608,8 @@ class TestAnalyticalGradientValidation:
                 f"(estimated={grad_val:.4f}, expected={analytical_gradient:.4f})"
             )
 
-        print(
-            f"✓ REINFORCE gradient: " f"{float(jnp.asarray(reinforce_grad).item()):.3f}"
-        )
-        print(
-            f"✓ Gumbel-Softmax gradient: " f"{float(jnp.asarray(gs_grad).item()):.3f}"
-        )
+        print(f"✓ REINFORCE gradient: {float(jnp.asarray(reinforce_grad).item()):.3f}")
+        print(f"✓ Gumbel-Softmax gradient: {float(jnp.asarray(gs_grad).item()):.3f}")
         print(f"✓ Expected analytical: {analytical_gradient}")
         print("✓ Gradient estimators produce expected results")
 

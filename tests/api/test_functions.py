@@ -215,20 +215,20 @@ class TestDiscreteProblem:
         # Test lower bound conditions
         lower_inclusive = Bound(1.5, inclusive=True)
         result = problem.generate_threshold_conditions(theta, (lower_inclusive, None))
-        assert not result[0] and result[1]  # 1.0 < 1.5, 2.0 >= 1.5
+        assert not result[0] and result[1]  # 1.0 < 1.5, 2.0 >= 1.5  # noqa: PT018
 
         lower_exclusive = Bound(1.5, inclusive=False)
         result = problem.generate_threshold_conditions(theta, (lower_exclusive, None))
-        assert not result[0] and result[1]  # 1.0 <= 1.5, 2.0 > 1.5
+        assert not result[0] and result[1]  # 1.0 <= 1.5, 2.0 > 1.5  # noqa: PT018
 
         # Test upper bound conditions
         upper_inclusive = Bound(1.5, inclusive=True)
         result = problem.generate_threshold_conditions(theta, (None, upper_inclusive))
-        assert result[0] and not result[1]  # 1.0 < 1.5, 2.0 >= 1.5
+        assert result[0] and not result[1]  # 1.0 < 1.5, 2.0 >= 1.5  # noqa: PT018
 
         upper_exclusive = Bound(1.5, inclusive=False)
         result = problem.generate_threshold_conditions(theta, (None, upper_exclusive))
-        assert result[0] and not result[1]  # 1.0 <= 1.5, 2.0 > 1.5
+        assert result[0] and not result[1]  # 1.0 <= 1.5, 2.0 > 1.5  # noqa: PT018
 
     def test_exact_gradient_missing_derivatives(self, example_logits_model):
         """Test exact gradient when function derivatives are missing."""
@@ -344,20 +344,16 @@ class TestDiscreteProblem:
             return 0  # Python int instead of jnp.ndarray
 
         with pytest.raises(
-            ValueError, match="Sampling function must return a jnp.ndarray"
+            ValueError, match=r"Sampling function must return a jnp\.ndarray"
         ):
-            DiscreteProblem(
-                branches, logits_model, sampling_function=bad_return_type
-            )  # type: ignore
+            DiscreteProblem(branches, logits_model, sampling_function=bad_return_type)  # type: ignore
 
         # Test invalid return shape
         def bad_return_shape(probs, key):
             return jnp.array([0, 1])  # Array instead of scalar
 
         with pytest.raises(ValueError, match="Sampling function must return a scalar"):
-            DiscreteProblem(
-                branches, logits_model, sampling_function=bad_return_shape
-            )  # type: ignore
+            DiscreteProblem(branches, logits_model, sampling_function=bad_return_shape)  # type: ignore
 
         # Test invalid return value
         def bad_return_value(probs, key):
@@ -366,9 +362,7 @@ class TestDiscreteProblem:
         with pytest.raises(
             ValueError, match="Sampling function returned invalid index"
         ):
-            DiscreteProblem(
-                branches, logits_model, sampling_function=bad_return_value
-            )  # type: ignore
+            DiscreteProblem(branches, logits_model, sampling_function=bad_return_value)  # type: ignore
 
         # Test generic exception handling
         def failing_function(probs, key):

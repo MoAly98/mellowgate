@@ -14,8 +14,8 @@ All operations support NumPy array broadcasting and are optimized for performanc
 with large parameter spaces.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Union
 
 import jax
 import jax.numpy as jnp
@@ -28,10 +28,9 @@ def _default_probability_function(logits: jnp.ndarray) -> jnp.ndarray:
     """Default probability function that applies softmax along branch dimension."""
     if logits.ndim == 1:
         return softmax(logits)
-    else:
-        # For 2D logits (num_branches, num_theta), apply softmax along branch
-        # dimension (axis=0)
-        return softmax(logits, axis=0)
+    # For 2D logits (num_branches, num_theta), apply softmax along branch
+    # dimension (axis=0)
+    return softmax(logits, axis=0)
 
 
 @dataclass
@@ -78,8 +77,8 @@ class Branch:
     """
 
     function: Callable[[jnp.ndarray], jnp.ndarray]
-    derivative_function: Optional[Callable[[jnp.ndarray], jnp.ndarray]] = None
-    threshold: Optional[tuple[Optional[Bound], Optional[Bound]]] = (None, None)
+    derivative_function: Callable[[jnp.ndarray], jnp.ndarray] | None = None
+    threshold: tuple[Bound | None, Bound | None] | None = (None, None)
 
 
 @dataclass
@@ -158,9 +157,9 @@ class DiscreteProblem:
         >>> expected = problem.compute_expected_value(theta_array)  # Shape: (3,)
     """
 
-    branches: List[Branch]
+    branches: list[Branch]
     logits_model: LogitsModel
-    sampling_function: Optional[Callable[[jnp.ndarray, jax.Array], int]] = None
+    sampling_function: Callable[[jnp.ndarray, jax.Array], int] | None = None
 
     def __post_init__(self):
         """Validate the sampling function signature after initialization."""
@@ -193,33 +192,34 @@ class DiscreteProblem:
 
             # Validate the result
             if not isinstance(result, jnp.ndarray):
-                raise ValueError(
-                    f"Sampling function must return a jnp.ndarray, got {type(result)}"
-                )
+                msg = f"Sampling function must return a jnp.ndarray, got {type(result)}"
+                raise ValueError(msg)
 
             if result.shape != ():
-                raise ValueError(
+                msg = (
                     "Sampling function must return a scalar array (shape ()), "
                     f"got shape {result.shape}.\n"
                     "Hint: Use jax.random.choice(key, len(probs), "
                     "shape=(), p=probs)"
                 )
+                raise ValueError(msg)
 
             if not (0 <= result < len(test_probs)):
-                raise ValueError(
+                msg = (
                     f"Sampling function returned invalid index {result}, "
                     f"must be in range [0, {len(test_probs)})"
                 )
+                raise ValueError(msg)
 
         except Exception as e:
-            if isinstance(e, (TypeError, ValueError)):
+            if isinstance(e, (TypeError, ValueError)):  # noqa: UP038
                 raise
-            else:
-                raise ValueError(
-                    f"Sampling function failed validation test: {str(e)}\n"
-                    f"Make sure your function works with test inputs: "
-                    f"probabilities=jnp.array([0.3, 0.7]), key=jax.random.PRNGKey(42)"
-                )
+            msg = (
+                f"Sampling function failed validation test: {e!s}\n"
+                f"Make sure your function works with test inputs: "
+                f"probabilities=jnp.array([0.3, 0.7]), key=jax.random.PRNGKey(42)"
+            )
+            raise ValueError(msg)
 
     @property
     def num_branches(self) -> int:
@@ -233,7 +233,7 @@ class DiscreteProblem:
     def generate_threshold_conditions(
         self,
         theta: jnp.ndarray,
-        threshold: Optional[tuple[Optional[Bound], Optional[Bound]]],
+        threshold: tuple[Bound | None, Bound | None] | None,
     ) -> jnp.ndarray:
         """Generate conditions for jnp.piecewise based on an array of theta values
         and a threshold.
@@ -405,7 +405,7 @@ class DiscreteProblem:
         # Stack results to get shape: (num_branches, N)
         return jnp.array(results)
 
-    def compute_derivative_values(self, theta: jnp.ndarray) -> Optional[jnp.ndarray]:
+    def compute_derivative_values(self, theta: jnp.ndarray) -> jnp.ndarray | None:
         """Evaluate all branch function derivatives at the given theta values
         using vectorized operations.
 
@@ -464,8 +464,8 @@ class DiscreteProblem:
         return jnp.sum(probabilities * function_values, axis=0)
 
     def compute_exact_gradient(
-        self, theta: Union[float, jnp.ndarray]
-    ) -> Optional[Union[float, jnp.ndarray]]:
+        self, theta: float | jnp.ndarray
+    ) -> float | jnp.ndarray | None:
         """Compute the exact gradient of the expected value with respect to theta
         using vectorized operations.
 
@@ -561,7 +561,7 @@ class DiscreteProblem:
         self,
         theta: jnp.ndarray,
         num_samples: int = 1000,
-        key: Optional[jax.Array] = None,
+        key: jax.Array | None = None,
     ) -> jnp.ndarray:
         """Sample branch indices based on the probability distribution using
         vectorized operations.
@@ -625,29 +625,26 @@ class DiscreteProblem:
             sample_keys = jax.random.split(key, num_samples)
 
             # Vectorized sampling using vmap over samples
-            samples = jax.vmap(lambda k: sampling_fn(probabilities, k))(sample_keys)
-            return samples
-        else:
-            # Multiple theta case: probabilities shape (num_branches, N)
-            # Batched key generation for efficient sampling
-            keys = jax.random.split(key, theta.shape[0])
+            return jax.vmap(lambda k: sampling_fn(probabilities, k))(sample_keys)
+        # Multiple theta case: probabilities shape (num_branches, N)
+        # Batched key generation for efficient sampling
+        keys = jax.random.split(key, theta.shape[0])
 
-            # Vectorized sampling function for one theta value
-            def sample_for_theta(key_i, probs_i):
-                # Generate keys for each sample for this theta
-                sample_keys = jax.random.split(key_i, num_samples)
-                # Vectorized sampling across samples using vmap
-                return jax.vmap(lambda k: sampling_fn(probs_i, k))(sample_keys)
+        # Vectorized sampling function for one theta value
+        def sample_for_theta(key_i, probs_i):
+            # Generate keys for each sample for this theta
+            sample_keys = jax.random.split(key_i, num_samples)
+            # Vectorized sampling across samples using vmap
+            return jax.vmap(lambda k: sampling_fn(probs_i, k))(sample_keys)
 
-            # Single vmap call for vectorized sampling across all theta values
-            samples = jax.vmap(sample_for_theta)(keys, probabilities.T)
-            return samples
+        # Single vmap call for vectorized sampling across all theta values
+        return jax.vmap(sample_for_theta)(keys, probabilities.T)
 
     def compute_stochastic_values(
         self,
-        theta: Union[float, jnp.ndarray],
+        theta: float | jnp.ndarray,
         num_samples: int = 1000,
-        key: Optional[jax.Array] = None,
+        key: jax.Array | None = None,
     ) -> jnp.ndarray:
         """Compute stochastic values of the discrete problem using vectorized sampling.
 

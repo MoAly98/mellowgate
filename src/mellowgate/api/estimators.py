@@ -15,7 +15,6 @@ discrete sampling operations.
 
 import warnings
 from dataclasses import dataclass
-from typing import Union
 
 import jax
 import jax.numpy as jnp
@@ -80,9 +79,9 @@ def _monte_carlo_expectation(
 
 def finite_difference_gradient(
     discrete_problem: DiscreteProblem,
-    parameter_value: Union[float, jnp.ndarray],
+    parameter_value: float | jnp.ndarray,
     config: FiniteDifferenceConfig,
-) -> Union[float, jnp.ndarray]:
+) -> float | jnp.ndarray:
     """Estimate gradient using finite differences method with vectorized operations.
 
     Performance optimizations:
@@ -307,17 +306,15 @@ def _reinforce_gradient_vectorized(
     )  # Shape: (num_theta, num_samples)
 
     # Final reduction: empirical mean as gradient estimate
-    gradient_estimates = jnp.mean(total_gradient_terms, axis=1)  # Shape: (num_theta,)
-
-    return gradient_estimates
+    return jnp.mean(total_gradient_terms, axis=1)  # Shape: (num_theta,)
 
 
 def reinforce_gradient(
     discrete_problem: DiscreteProblem,
-    parameter_value: Union[float, jnp.ndarray],
+    parameter_value: float | jnp.ndarray,
     config: ReinforceConfig,
     state: ReinforceState,
-) -> Union[float, jnp.ndarray]:
+) -> float | jnp.ndarray:
     """
     Estimate the gradient using the REINFORCE algorithm with vectorized operations.
 
@@ -640,16 +637,15 @@ def _gumbel_softmax_gradient_vectorized(
     total_gradient_terms = (
         pathwise_contribution + reparameterization_contribution
     )  # Shape: (num_theta, num_samples)
-    gradient_estimates = jnp.mean(total_gradient_terms, axis=1)  # Shape: (num_theta,)
 
-    return gradient_estimates
+    return jnp.mean(total_gradient_terms, axis=1)  # Shape: (num_theta,)
 
 
 def gumbel_softmax_gradient(
     discrete_problem: DiscreteProblem,
-    parameter_value: Union[float, jnp.ndarray],
+    parameter_value: float | jnp.ndarray,
     config: GumbelSoftmaxConfig,
-) -> Union[float, jnp.ndarray]:
+) -> float | jnp.ndarray:
     """
     Estimate the gradient using the Gumbel-Softmax reparameterization trick
     with vectorized operations and JIT compilation.

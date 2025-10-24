@@ -460,7 +460,9 @@ class TestPerformanceAndScaling:
         assert jnp.isnan(fd_results.gradient_estimates["fd"]["std"]).all()
 
         # Also test the internal function directly to ensure coverage
-        from mellowgate.api.experiments import _compute_sweep_statistics
+        from mellowgate.api.experiments import (
+            _compute_sweep_statistics,  # noqa: PLC2701
+        )
 
         # Test with empty gradient samples array
         empty_samples = jnp.empty((0, 2))  # 0 repetitions, 2 theta values

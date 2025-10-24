@@ -11,3 +11,18 @@ from .estimators import (
 )
 from .experiments import Sweep, run_parameter_sweep
 from .functions import Branch, DiscreteProblem, LogitsModel
+
+__all__ = [
+    "Branch",
+    "DiscreteProblem",
+    "FiniteDifferenceConfig",
+    "GumbelSoftmaxConfig",
+    "LogitsModel",
+    "ReinforceConfig",
+    "ReinforceState",
+    "Sweep",
+    "finite_difference_gradient",
+    "gumbel_softmax_gradient",
+    "reinforce_gradient",
+    "run_parameter_sweep",
+]

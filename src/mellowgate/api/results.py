@@ -10,7 +10,6 @@ access patterns for downstream analysis and visualization.
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 import jax.numpy as jnp
 
@@ -20,10 +19,10 @@ class ResultsContainer:
     """Container for storing experiment results and metadata."""
 
     theta_values: jnp.ndarray
-    gradient_estimates: Dict[str, Dict[str, jnp.ndarray]]
-    sampled_points: Optional[Dict[str, jnp.ndarray]] = None
-    expectation_values: Optional[jnp.ndarray] = None
-    discrete_distributions: Optional[jnp.ndarray] = None
+    gradient_estimates: dict[str, dict[str, jnp.ndarray]]
+    sampled_points: dict[str, jnp.ndarray] | None = None
+    expectation_values: jnp.ndarray | None = None
+    discrete_distributions: jnp.ndarray | None = None
 
     def add_sampled_points(
         self, estimator_name: str, sampled_points: jnp.ndarray

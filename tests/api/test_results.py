@@ -167,7 +167,7 @@ class TestResultsContainer:
         assert "reinforce" in container.gradient_estimates
 
         # Check structure of each estimator's results
-        for estimator_name, results in container.gradient_estimates.items():
+        for _estimator_name, results in container.gradient_estimates.items():
             assert "theta" in results
             assert "mean" in results
             assert "std" in results

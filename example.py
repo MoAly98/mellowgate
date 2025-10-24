@@ -50,10 +50,9 @@ def softmax(logits):
         # Single theta case: logits shape (num_branches,)
         exp_logits = jnp.exp(logits - jnp.max(logits))
         return exp_logits / jnp.sum(exp_logits)
-    else:
-        # Multiple theta case: logits shape (num_branches, num_theta)
-        exp_logits = jnp.exp(logits - jnp.max(logits, axis=0, keepdims=True))
-        return exp_logits / jnp.sum(exp_logits, axis=0, keepdims=True)
+    # Multiple theta case: logits shape (num_branches, num_theta)
+    exp_logits = jnp.exp(logits - jnp.max(logits, axis=0, keepdims=True))
+    return exp_logits / jnp.sum(exp_logits, axis=0, keepdims=True)
 
 
 def sigmoid(logits):

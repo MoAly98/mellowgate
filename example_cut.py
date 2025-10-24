@@ -298,7 +298,7 @@ print("\nREINFORCE gradient statistics:")
 print(f"  Mean: {jnp.mean(gradient_reinforce):.6f}")
 print(f"  Std:  {jnp.std(gradient_reinforce):.6f}")
 if exact_gradient is not None:
-    print(f"  MSE vs exact: {jnp.mean((gradient_reinforce - exact_gradient)**2):.8f}")
+    print(f"  MSE vs exact: {jnp.mean((gradient_reinforce - exact_gradient) ** 2):.8f}")
 
 
 # Temperature Analysis for Gumbel-Softmax
@@ -338,7 +338,7 @@ else:
 
         # Multiple repetitions for this temperature
         temp_gradients = []
-        for rep in range(num_repetitions):
+        for _rep in range(num_repetitions):
             config_temp = GumbelSoftmaxConfig(
                 temperature=temp,
                 num_samples=num_samples_temp,
@@ -409,8 +409,8 @@ else:
         alpha=0.8,
     )
     colors = ["red", "blue", "green", "orange"]
-    for idx, (temp_idx, temp, color) in enumerate(
-        zip(temp_indices, sample_temps, colors)
+    for _idx, (temp_idx, temp, color) in enumerate(
+        zip(temp_indices, sample_temps, colors, strict=False)
     ):
         # Plot a few sample estimates
         for rep in range(min(3, num_repetitions)):

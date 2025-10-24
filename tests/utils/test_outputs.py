@@ -249,7 +249,7 @@ class TestOutputManagerIntegration:
             output_path = manager.get_path("experiments", "test_data.txt")
 
             # Write a test file
-            with open(output_path, "w") as f:
+            with Path(output_path).open("w") as f:
                 f.write("test data")
 
             # Verify file was created
@@ -257,7 +257,7 @@ class TestOutputManagerIntegration:
             assert output_path.is_file()
 
             # Verify content
-            with open(output_path, "r") as f:
+            with Path(output_path).open("r") as f:
                 content = f.read()
                 assert content == "test data"
 
@@ -275,7 +275,7 @@ class TestOutputManagerIntegration:
                 output_paths.append(path)
 
                 # Create the file
-                with open(path, "w") as f:
+                with Path(path).open("w") as f:
                     f.write(f"content of {filename}")
 
             # Verify all files exist
@@ -307,7 +307,7 @@ class TestOutputManagerIntegration:
                 created_paths.append(path)
 
                 # Create the file
-                with open(path, "w") as f:
+                with Path(path).open("w") as f:
                     f.write(f"content for {subdir}/{filename}")
 
             # Verify directory structure

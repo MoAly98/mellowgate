@@ -9,7 +9,7 @@ The visualizations support experimental analysis and help researchers understand
 the trade-offs between different estimation approaches.
 """
 
-from typing import Callable, Optional, Union
+from collections.abc import Callable
 
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -22,12 +22,12 @@ from mellowgate.utils.outputs import OutputManager
 def plot_gradient_estimates_vs_truth(
     results_dict: dict[str, ResultsContainer],
     true_gradient_function: Callable[
-        [Union[float, jnp.ndarray]], Union[Optional[float], Optional[jnp.ndarray]]
+        [float | jnp.ndarray], float | None | jnp.ndarray | None
     ],
     output_manager: OutputManager,
-    plot_title: Optional[str] = None,
-    output_filename: Optional[str] = None,
-    output_subdirectory: Optional[str] = None,
+    plot_title: str | None = None,
+    output_filename: str | None = None,
+    output_subdirectory: str | None = None,
 ) -> None:
     """Plot gradient estimate means with error bars against true gradients
         for all estimators.
@@ -71,7 +71,7 @@ def plot_gradient_estimates_vs_truth(
 
     # Plot each estimator's results
     color_idx = 0
-    for estimator_name, results in results_dict.items():
+    for _sweep_name, results in results_dict.items():
         for estimator_name, estimator_results in results.gradient_estimates.items():
             mean_estimates = estimator_results["mean"]
             std_estimates = estimator_results["std"]
@@ -148,12 +148,12 @@ def plot_gradient_estimates_vs_truth(
 def plot_bias_variance_mse_analysis(
     results_dict: dict[str, ResultsContainer],
     true_gradient_function: Callable[
-        [Union[float, jnp.ndarray]], Union[Optional[float], Optional[jnp.ndarray]]
+        [float | jnp.ndarray], float | None | jnp.ndarray | None
     ],
     output_manager: OutputManager,
-    plot_title: Optional[str] = None,
-    output_filename: Optional[str] = None,
-    output_subdirectory: Optional[str] = None,
+    plot_title: str | None = None,
+    output_filename: str | None = None,
+    output_subdirectory: str | None = None,
 ) -> None:
     """Plot bias, variance, and MSE decomposition for all estimators.
 
@@ -246,7 +246,7 @@ def plot_bias_variance_mse_analysis(
     }
 
     color_idx = 0
-    for estimator_name, results in results_dict.items():
+    for _sweep_name, results in results_dict.items():
         for estimator_name, estimator_results in results.gradient_estimates.items():
             mean_estimates = estimator_results["mean"]
             std_estimates = estimator_results["std"]
@@ -317,9 +317,9 @@ def plot_bias_variance_mse_analysis(
 def plot_computational_time_analysis(
     results_dict: dict[str, ResultsContainer],
     output_manager: OutputManager,
-    plot_title: Optional[str] = None,
-    output_filename: Optional[str] = None,
-    output_subdirectory: Optional[str] = None,
+    plot_title: str | None = None,
+    output_filename: str | None = None,
+    output_subdirectory: str | None = None,
 ) -> None:
     """Plot computational time comparison across all gradient estimators."""
     plot_title = plot_title or "Computational time per theta value"
@@ -335,7 +335,7 @@ def plot_computational_time_analysis(
     colors = [tab10_cmap(i) for i in range(10)]  # Get 10 distinct colors from tab10
 
     color_idx = 0
-    for estimator_name, results in results_dict.items():
+    for _sweep_name, results in results_dict.items():
         for estimator_name, estimator_results in results.gradient_estimates.items():
             theta_values = results.theta_values
             time_values = estimator_results["time"]
