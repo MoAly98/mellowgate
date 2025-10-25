@@ -31,7 +31,10 @@ class FiniteDifferenceConfig:
 
 
 def _monte_carlo_expectation(
-    discrete_problem: DiscreteProblem, theta: jnp.ndarray, num_samples: int
+    discrete_problem: DiscreteProblem,
+    theta: jnp.ndarray,
+    num_samples: int,
+    key: jax.Array,
 ) -> jnp.ndarray:
     """
     Compute Monte Carlo expectation for given theta values using efficient
@@ -46,13 +49,11 @@ def _monte_carlo_expectation(
         discrete_problem: The discrete optimization problem instance.
         theta: Parameter values, shape: (N,)
         num_samples: Number of samples for Monte Carlo estimation.
+        key: JAX random key for sampling.
 
     Returns:
         jnp.ndarray: Expected values, shape: (N,)
     """
-    # Generate all random keys at once for batched sampling
-    key = jax.random.PRNGKey(0)  # Use deterministic key for reproducibility
-
     # Vectorized sampling: sampled_values shape: (N, num_samples)
     sampled_values = discrete_problem.compute_stochastic_values(
         theta, num_samples=num_samples, key=key
@@ -103,12 +104,17 @@ def finite_difference_gradient(
     theta_plus = theta_array + config.step_size
     theta_minus = theta_array - config.step_size
 
+    # Use Common Random Numbers (CRN) for variance reduction
+    # Using the SAME random key for both evaluations reduces variance in the
+    # finite difference estimate by inducing positive correlation
+    shared_key = jax.random.PRNGKey(0)
+
     # Compute expectations using optimized Monte Carlo function - each has shape: (N,)
     expectation_at_plus = _monte_carlo_expectation(
-        discrete_problem, theta_plus, config.num_samples
+        discrete_problem, theta_plus, config.num_samples, shared_key
     )
     expectation_at_minus = _monte_carlo_expectation(
-        discrete_problem, theta_minus, config.num_samples
+        discrete_problem, theta_minus, config.num_samples, shared_key
     )
 
     # Finite difference approximation - shape: (N,)
