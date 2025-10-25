@@ -78,7 +78,7 @@ class TestRunParameterSweep:
     """Test the run_parameter_sweep function."""
 
     def test_parameter_sweep_basic(self, simple_problem):
-        """Test basic parameter sweep execution."""
+        """Ensure single-estimator sweep matches analytic gradient."""
         theta_values = jnp.array([0.5, 1.0])
         estimator_configs = {
             "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=50)}
@@ -92,18 +92,19 @@ class TestRunParameterSweep:
 
         results = run_parameter_sweep(simple_problem, sweep)
 
-        assert isinstance(results, dict)
-        assert "fd" in results
-        assert isinstance(results["fd"], ResultsContainer)
-        assert results["fd"].gradient_estimates["fd"]["mean"].shape == (2,)
-        assert jnp.all(jnp.isfinite(results["fd"].gradient_estimates["fd"]["mean"]))
+        fd_results = results["fd"].gradient_estimates["fd"]
+        expected_grad = simple_problem.compute_exact_gradient(theta_values)
+
+        assert jnp.array_equal(fd_results["theta"], theta_values)
+        assert jnp.allclose(fd_results["mean"], expected_grad, atol=0.03)
+        assert fd_results["std"].shape == theta_values.shape
 
     def test_parameter_sweep_multiple_estimators(self, simple_problem):
-        """Test parameter sweep with multiple estimators."""
+        """Compare multiple estimators against analytic gradient."""
         theta_values = jnp.array([1.0])
         estimator_configs = {
-            "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=50)},
-            "gs": {"cfg": GumbelSoftmaxConfig(temperature=1.0, num_samples=50)},
+            "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=100)},
+            "gs": {"cfg": GumbelSoftmaxConfig(temperature=0.5, num_samples=100)},
         }
 
         sweep = Sweep(
@@ -113,42 +114,39 @@ class TestRunParameterSweep:
         )
 
         results = run_parameter_sweep(simple_problem, sweep)
+        expected_grad = simple_problem.compute_exact_gradient(theta_values)
 
-        assert isinstance(results, dict)
-        assert "fd" in results
-        assert "gs" in results
-        assert isinstance(results["fd"], ResultsContainer)
-        assert isinstance(results["gs"], ResultsContainer)
-        assert results["fd"].gradient_estimates["fd"]["mean"].shape == (1,)
-        assert results["gs"].gradient_estimates["gs"]["mean"].shape == (1,)
+        fd_mean = results["fd"].gradient_estimates["fd"]["mean"]
+        gs_mean = results["gs"].gradient_estimates["gs"]["mean"]
+
+        assert fd_mean.shape == (1,)
+        assert gs_mean.shape == (1,)
+        assert jnp.allclose(fd_mean, expected_grad, atol=0.05)
+        assert jnp.allclose(gs_mean, expected_grad, atol=0.05)
 
     def test_parameter_sweep_with_reinforce(self, simple_problem):
-        """Test parameter sweep with REINFORCE estimator."""
+        """Validate REINFORCE sweep statistics and gradient accuracy."""
         theta_values = jnp.array([1.0])
         estimator_configs = {
             "reinforce": {
-                "cfg": ReinforceConfig(num_samples=50),
+                "cfg": ReinforceConfig(num_samples=500, use_baseline=True),
                 "state": ReinforceState(),
             },
         }
 
         sweep = Sweep(
             theta_values=theta_values,
-            num_repetitions=1,
+            num_repetitions=3,
             estimator_configs=estimator_configs,
         )
 
         results = run_parameter_sweep(simple_problem, sweep)
+        reinforce_results = results["reinforce"].gradient_estimates["reinforce"]
+        expected_grad = simple_problem.compute_exact_gradient(theta_values)
 
-        assert isinstance(results, dict)
-        assert "reinforce" in results
-        assert isinstance(results["reinforce"], ResultsContainer)
-        assert results["reinforce"].gradient_estimates["reinforce"]["mean"].shape == (
-            1,
-        )
-        assert jnp.all(
-            jnp.isfinite(results["reinforce"].gradient_estimates["reinforce"]["mean"])
-        )
+        assert reinforce_results["mean"].shape == (1,)
+        assert jnp.allclose(reinforce_results["mean"], expected_grad, atol=0.05)
+        assert jnp.allclose(reinforce_results["std"], jnp.zeros_like(expected_grad))
 
     def test_parameter_sweep_empty_estimators(self, simple_problem):
         """Test parameter sweep with no estimators."""
@@ -165,7 +163,7 @@ class TestRunParameterSweep:
         """Test parameter sweep with multiple repetitions."""
         theta_values = jnp.array([0.5, 1.0, 1.5])
         estimator_configs = {
-            "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=30)}
+            "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=100)}
         }
 
         sweep = Sweep(
@@ -185,7 +183,7 @@ class TestRunParameterSweep:
         # Test with larger arrays to ensure vectorized operations work
         theta_values = jnp.linspace(-1.0, 1.0, 10)
         estimator_configs = {
-            "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=30)}
+            "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=100)}
         }
 
         sweep = Sweep(
@@ -200,10 +198,10 @@ class TestRunParameterSweep:
         assert jnp.all(jnp.isfinite(results["fd"].gradient_estimates["fd"]["mean"]))
 
     def test_parameter_sweep_results_structure(self, simple_problem):
-        """Test that results have expected structure."""
+        """Validate expectation and cached distributions in sweep results."""
         theta_values = jnp.array([1.0, 2.0])
         estimator_configs = {
-            "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=30)}
+            "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=100)}
         }
 
         sweep = Sweep(
@@ -216,12 +214,22 @@ class TestRunParameterSweep:
 
         # Should have theta_values and expectation_values
         fd_results = results["fd"]
+        expected_expectations = simple_problem.compute_expected_value(theta_values)
+        expected_distributions = simple_problem.compute_function_values_deterministic(
+            theta_values
+        )
+
         assert jnp.array_equal(fd_results.theta_values, theta_values)
-        assert fd_results.expectation_values is not None
-        assert fd_results.expectation_values.shape == (2,)
+        assert jnp.allclose(fd_results.expectation_values, expected_expectations)
+        assert jnp.array_equal(
+            fd_results.discrete_distributions, expected_distributions
+        )
+        sampled_indices = fd_results.sampled_points["sampled_branch_indices"]
+        assert sampled_indices.shape[0] == theta_values.shape[0]
+        assert jnp.all((sampled_indices >= 0) & (sampled_indices < 2))
 
     def test_parameter_sweep_no_exact_gradients(self):
-        """Test parameter sweep results structure."""
+        """Ensure sweep succeeds when analytical gradients are unavailable."""
         # Create problem without logits derivatives (multi-branch to avoid shape issues)
         branches = [
             Branch(function=lambda th: th**2),
@@ -254,13 +262,17 @@ class TestResultsContainer:
     """Test the ResultsContainer functionality."""
 
     def test_results_container_access(self, simple_problem):
-        """Test accessing results from ResultsContainer."""
+        """Ensure ResultsContainer preserves theta ordering and statistics."""
         theta_values = jnp.array([1.0])
         estimator_configs = {
-            "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=30)}
+            "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=100)}
         }
 
-        sweep = Sweep(theta_values=theta_values, estimator_configs=estimator_configs)
+        sweep = Sweep(
+            theta_values=theta_values,
+            num_repetitions=2,
+            estimator_configs=estimator_configs,
+        )
 
         results = run_parameter_sweep(simple_problem, sweep)
 
@@ -274,13 +286,19 @@ class TestResultsContainer:
 
         # Test that theta_values match
         assert jnp.array_equal(fd_results.theta_values, theta_values)
+        expected_grad = simple_problem.compute_exact_gradient(theta_values)
+        expected_expectation = simple_problem.compute_expected_value(theta_values)
+        assert jnp.allclose(
+            fd_results.gradient_estimates["fd"]["mean"], expected_grad, atol=0.05
+        )
+        assert jnp.allclose(fd_results.expectation_values, expected_expectation)
 
     def test_results_container_structure(self, simple_problem):
-        """Test the structure of results in ResultsContainer."""
+        """Check per-estimator statistics against analytic gradients."""
         theta_values = jnp.array([0.5, 1.0])
         estimator_configs = {
-            "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=30)},
-            "gs": {"cfg": GumbelSoftmaxConfig(temperature=1.0, num_samples=30)},
+            "fd": {"cfg": FiniteDifferenceConfig(step_size=1e-3, num_samples=100)},
+            "gs": {"cfg": GumbelSoftmaxConfig(temperature=0.5, num_samples=100)},
         }
 
         sweep = Sweep(
@@ -305,6 +323,8 @@ class TestResultsContainer:
             assert "mean" in grad_data
             assert "std" in grad_data
             assert grad_data["mean"].shape == (2,)
+            expected_grad = simple_problem.compute_exact_gradient(theta_values)
+            assert jnp.allclose(grad_data["mean"], expected_grad, atol=0.05)
 
 
 class TestEdgeCases:
