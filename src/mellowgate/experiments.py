@@ -15,20 +15,20 @@ of different gradient estimation approaches on discrete optimization problems.
 
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 import jax
 import jax.numpy as jnp
 
-from mellowgate.api.estimators import (
+from mellowgate.core import DiscreteProblem
+from mellowgate.estimators import (
     ReinforceState,
     finite_difference_gradient,
     gumbel_softmax_gradient,
     reinforce_gradient,
 )
-from mellowgate.api.functions import DiscreteProblem
-from mellowgate.api.results import ResultsContainer
 from mellowgate.logging import logger
+from mellowgate.results import ResultsContainer
 
 ArrayType = jnp.ndarray
 
@@ -52,7 +52,7 @@ class Sweep:
 
     Examples:
         >>> import jax.numpy as jnp
-        >>> from mellowgate.api.estimators import FiniteDifferenceConfig
+        >>> from mellowgate.estimators import FiniteDifferenceConfig
         >>>
         >>> sweep = Sweep(
         ...     theta_values=jnp.linspace(-2, 2, 10),
@@ -65,7 +65,7 @@ class Sweep:
 
     theta_values: ArrayType
     num_repetitions: int = 200
-    estimator_configs: Optional[Dict[str, Dict[str, Any]]] = None
+    estimator_configs: dict[str, dict[str, Any]] | None = None
 
 
 def _compute_sweep_statistics(
@@ -100,7 +100,7 @@ def _compute_sweep_statistics(
 
 def run_parameter_sweep(
     discrete_problem: DiscreteProblem, sweep_config: Sweep
-) -> Dict[str, ResultsContainer]:
+) -> dict[str, ResultsContainer]:
     """Execute a parameter sweep experiment with multiple gradient estimators.
 
     Performance optimizations:
@@ -164,7 +164,7 @@ def run_parameter_sweep(
         # Run multiple repetitions using vectorized gradient functions
         gradient_samples = []
 
-        for rep in range(sweep_config.num_repetitions):
+        for _rep in range(sweep_config.num_repetitions):
             # All estimators use JIT compilation for efficient computation
             if estimator_name == "fd":
                 # Process all theta values at once with JIT compilation
@@ -173,12 +173,9 @@ def run_parameter_sweep(
                 )
             elif estimator_name == "reinforce":
                 if not isinstance(estimator_state, ReinforceState):
-                    logger.error(
-                        "State for 'reinforce' must be a ReinforceState instance."
-                    )
-                    raise TypeError(
-                        "State for 'reinforce' must be a ReinforceState instance."
-                    )
+                    msg = "State for 'reinforce' must be a ReinforceState instance."
+                    logger.error(msg)
+                    raise TypeError(msg)
                 # Process all theta values at once with JIT compilation
                 rep_gradients = reinforce_gradient(
                     discrete_problem,
@@ -192,8 +189,9 @@ def run_parameter_sweep(
                     discrete_problem, sweep_config.theta_values, estimator_config
                 )
             else:
-                logger.error(f"Unknown estimator: {estimator_name}")
-                raise ValueError(f"Unknown estimator: {estimator_name}")
+                msg = f"Unknown estimator: {estimator_name}"
+                logger.error(msg)
+                raise ValueError(msg)
 
             gradient_samples.append(rep_gradients)
 
@@ -223,7 +221,7 @@ def run_parameter_sweep(
 
         # Log total time for the current estimator
         logger.info(
-            f"Finished estimator: {estimator_name}, " f"Total Time: {elapsed_time:.2f}s"
+            f"Finished estimator: {estimator_name}, Total Time: {elapsed_time:.2f}s"
         )
 
         # Store results for this estimator using computed invariants

@@ -12,7 +12,7 @@ seamlessly with the core DiscreteProblem class.
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
-from mellowgate.api.results import ResultsContainer
+from mellowgate.results import ResultsContainer
 from mellowgate.utils.outputs import OutputManager
 
 

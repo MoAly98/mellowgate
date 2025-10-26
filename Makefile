@@ -10,8 +10,8 @@ help:
 	@echo "  install      Install package in editable mode"
 	@echo ""
 	@echo "Code Quality:"
-	@echo "  format       Format code with black and isort"
-	@echo "  lint         Run all linting checks (black, isort, flake8)"
+	@echo "  format       Format code with ruff"
+	@echo "  lint         Run ruff lint and format checks"
 	@echo "  pre-commit   Run pre-commit hooks on all files"
 	@echo ""
 	@echo "Testing:"
@@ -21,6 +21,7 @@ help:
 	@echo "Utilities:"
 	@echo "  clean        Clean up build artifacts and cache files"
 	@echo "  example      Run the example script"
+	@echo "  docs         Build the Sphinx documentation"
 
 # Development setup
 setup-dev:
@@ -36,20 +37,16 @@ install:
 
 # Code formatting
 format:
-	@echo "Formatting code with black..."
-	pixi run black src/ example.py
-	@echo "Sorting imports with isort..."
-	pixi run isort src/ example.py
+	@echo "Formatting code with ruff..."
+	pixi run ruff format src tests example.py
 	@echo "✅ Code formatting complete!"
 
 # Linting
 lint:
-	@echo "Checking code formatting with black..."
-	pixi run black --check --diff src/ example.py
-	@echo "Checking import sorting with isort..."
-	pixi run isort --check-only --diff src/ example.py
-	@echo "Linting with flake8..."
-	pixi run flake8 src/ example.py
+	@echo "Checking formatting with ruff..."
+	pixi run ruff format --check src tests example.py
+	@echo "Running ruff lint checks..."
+	pixi run ruff check src tests example.py
 	@echo "✅ All linting checks passed!"
 
 # Pre-commit
@@ -87,6 +84,12 @@ clean:
 	find . -type f -name "*.pyc" -delete
 	find . -type f -name "*.pyo" -delete
 	@echo "✅ Cleanup complete!"
+
+# Documentation
+docs:
+	@echo "Building documentation..."
+	pixi run -e docs sphinx-build -M html docs docs/_build
+	@echo "✅ Documentation built at docs/_build/html/index.html"
 
 # Type checking (placeholder - uncomment when ready)
 # type-check:

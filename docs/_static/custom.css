@@ -1,0 +1,17 @@
+/* Align documentation tables and definition lists similar to everwillow */
+table.autosummary,
+table.docutils,
+table.longtable {
+    margin-left: 0 !important;
+    margin-right: auto !important;
+}
+
+dl.py,
+dl.function,
+dl.class,
+dl.method,
+dl.attribute,
+dl {
+    text-align: left !important;
+    margin-left: 0 !important;
+}

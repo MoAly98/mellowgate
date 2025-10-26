@@ -10,7 +10,6 @@ make it easy to locate and manage results from multiple runs.
 """
 
 from pathlib import Path
-from typing import Optional
 
 
 class OutputManager:
@@ -41,7 +40,7 @@ class OutputManager:
         self.base_directory = Path(base_directory).resolve()
         self.base_directory.mkdir(parents=True, exist_ok=True)
 
-    def get_path(self, subdirectory: str, filename: Optional[str] = None) -> Path:
+    def get_path(self, subdirectory: str, filename: str | None = None) -> Path:
         """Get a path within the output directory structure.
 
         Creates the subdirectory if it doesn't exist and optionally returns

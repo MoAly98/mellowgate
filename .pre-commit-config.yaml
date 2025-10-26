@@ -3,45 +3,20 @@
 # See https://pre-commit.com/hooks.html for more hooks
 
 repos:
-  # Black code formatter
-  - repo: https://github.com/psf/black
-    rev: 25.9.0
+  # Ruff - fast Python linter and formatter (replaces black, isort, flake8)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
     hooks:
-      - id: black
-        name: black
-        description: "Black: The uncompromising Python code formatter"
-        entry: black
-        language: python
-        language_version: python3
-        require_serial: true
-        types_or: [python, pyi]
-        minimum_pre_commit_version: 2.9.2
+      # Run the linter
+      - id: ruff
+        name: ruff
+        description: "Ruff: An extremely fast Python linter"
+        args: [--fix]
         exclude: ^learning/
-
-  # Flake8 linter
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.3.0
-    hooks:
-      - id: flake8
-        name: flake8
-        description: "Flake8: Your tool for style guide enforcement"
-        entry: flake8
-        language: python
-        types: [python]
-        require_serial: true
-        exclude: ^learning/
-
-  # isort import formatter
-  - repo: https://github.com/pycqa/isort
-    rev: 6.0.1
-    hooks:
-      - id: isort
-        name: isort
-        description: "isort: A Python utility to sort imports"
-        entry: isort
-        language: python
-        types: [python]
-        args: [--profile, black]
+      # Run the formatter
+      - id: ruff-format
+        name: ruff-format
+        description: "Ruff: An extremely fast Python formatter"
         exclude: ^learning/
 
   # Basic file checks

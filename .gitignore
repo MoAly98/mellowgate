@@ -9,3 +9,6 @@
 .coverage
 htmlcov/
 coverage.xml
+
+# Documentation build artefacts
+docs/_build/

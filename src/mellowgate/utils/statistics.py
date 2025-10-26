@@ -9,12 +9,12 @@ The utilities focus on variance estimation, bias analysis, and other metrics
 relevant to evaluating the quality of gradient estimators.
 """
 
-from typing import Tuple, Union
+from typing import Union
 
 import jax
 import jax.numpy as jnp
 
-ShapeType = Union[int, Tuple[int, ...]]
+ShapeType = Union[int, tuple[int, ...]]
 
 
 def sample_gumbel(shape: ShapeType, key: jax.Array) -> jnp.ndarray:
