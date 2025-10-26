@@ -153,7 +153,7 @@ mellowgate/
 │   ├── logging/              # Logging configuration
 │   └── config.py             # JAX configuration and precision settings
 ├── tests/                    # Comprehensive unit tests (pytest)
-├── learning/                 # Tutorial and example notebooks
+├── docs/                     # Sphinx documentation sources
 ├── example.py                # Main example script
 ├── pyproject.toml           # Project metadata and tool config
 ├── pixi.toml                # Pixi dependency management
